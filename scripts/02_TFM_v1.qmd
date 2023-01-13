@@ -1,0 +1,31 @@
+---
+title: "TFM"
+format: docx
+editor: visual
+---
+
+## 
+
+## Análisis de tipos de roca en el grupo BRENT
+
+EL grupo Brent queda a tomar
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+
+library(readr)
+library(tidyverse)
+```
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+
+
+logs <- read_rds("../data/logs.rds")
+
+
+```
