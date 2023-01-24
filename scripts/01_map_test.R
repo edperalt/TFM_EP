@@ -69,7 +69,7 @@ for (i in 1:nrow(nor_fm)) {
            )
 }
 
-saveRDS(temp, "data/logs.rds")
+#saveRDS(temp, "data/logs.rds")
 
 # unique(temp$fm)
 
