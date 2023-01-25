@@ -78,7 +78,9 @@ temp %>%
   ggplot(aes(RDEP))+
   geom_histogram()+
   scale_x_log10()+
-  facet_wrap(vars(fm), scales = "free")
+  facet_wrap(vars(fm), 
+             scales = "free_y"
+             )
 
 
 temp %>% 
@@ -134,7 +136,7 @@ ggplot() +
 nor_fields %>%drop_na(wlbFormationWithHc1) %>% count(wlbFormationWithHc1) %>% 
   arrange(desc(n))
 
-nor_wells %>% drop_na(wlbFormationWithHc1) %>% 
+nor_wells %>% drop_na(wlbFormationWithHc1) 
   group_by(wlbWell) %>% 
   summarise(wlbFormationWithHc1= first(wlbFormationWithHc1)) %>% 
   count(wlbFormationWithHc1) %>% 

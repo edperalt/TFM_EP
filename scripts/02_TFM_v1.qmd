@@ -8,7 +8,27 @@ editor: visual
 
 ## Análisis de tipos de roca en el grupo BRENT
 
-EL grupo Brent queda a tomar
+En el mundo petrolero tenemos una serie de retos que preveen la predicción de de datos. En este caso en particular vamos a analizar la predicción de tipos de roca en un pozo a partir de interpretaciones de núcleos o corazones extraídos de pozos.
+
+Para estimar el volumen de hidrocarburo que se encuentra dentro de un yacimiento se utiliza la siguiente ecuación:
+
+$$
+STOIIP = \frac{GRV * NG * \phi * (1-Sw)}{Bo}  
+$$
+
+Donde:
+
+STOIIP : es el volumen de petróleo en superficie (fuera del yacimiento), las unidades varían dependiendo del país. Por ejemplo en España se reportan barriles, en China en Toneladas métricas y en otros sitios en metros cúbicos.
+
+GRV: Gross Rock Volume, es el volúmen de roca que ocupa el yacimiento. El volumen que nos interresa es el volumen sobre el contacto Agua-Petroleo ya que el Petróleo siempre se encuentra sobre agua.
+
+NG: (Net to Gross) es una fracción que nos indica que proporción de las rocas contenidas en el GRV son rocas reservorio que contienen petroleo, los valores van de 0 a 1.
+
+$\phi$ : representa la porosidad en fracción, esto es el volumen de la roca que contiene fluido.
+
+Sw: es la Saturación de agua en fracción, nos dice que proporción del poro esta lleno de agua ( la porporción remanente estará llena de petroleo.
+
+Bo: Es el factor de compresibilidad del petroleo, nos indica cuanto se expande el liquido en el proceso de ser llevado a superficie, normalmente son valores que oscilan entre poco mas de 1 y valores cercanos a 1.7
 
 ```{r}
 #| echo: false
@@ -17,6 +37,7 @@ EL grupo Brent queda a tomar
 
 library(readr)
 library(tidyverse)
+library(readxl)
 ```
 
 ```{r}
@@ -26,16 +47,23 @@ library(tidyverse)
 
 
 logs <- read_rds("../data/logs.rds")
-
+unique(logs$)
 
 ```
-
-Datos de núcleo
 
 ```{r}
 #| echo: false
 #| message: false
 #| warning: false
-library(readxl)
-core <- read_excel("data/RealPore wells status log.xlsx")
+
+core <- read_excel("../data/RealPore wells status log.xlsx")
+
+core_well <- unique(core$Wellbore)
+```
+
+```{r}
+cored_well_log <- logs %>% 
+  filter(well %in% core_well)
+
+cored_wells <- unique(cored_well_log$well)
 ```
