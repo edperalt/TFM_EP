@@ -29,3 +29,13 @@ logs <- read_rds("../data/logs.rds")
 
 
 ```
+
+Datos de núcleo
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+library(readxl)
+core <- read_excel("data/RealPore wells status log.xlsx")
+```
