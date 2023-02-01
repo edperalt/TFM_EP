@@ -6,11 +6,13 @@ editor: visual
 
 ## 
 
-## Análisis de tipos de roca en el grupo BRENT
+## Análisis de tipos de roca en el grupo BRENT en el horst ...
 
-En el mundo petrolero tenemos una serie de retos que preveen la predicción de de datos. En este caso en particular vamos a analizar la predicción de tipos de roca en un pozo a partir de interpretaciones de núcleos o corazones extraídos de pozos.
+En el mundo petrolero tenemos una serie de retos que preveen la predicción de datos. En este caso en particular vamos a analizar la predicción de tipos de roca en un pozo a partir de interpretaciones de núcleos o corazones extraídos de pozos.
 
-Para estimar el volumen de hidrocarburo que se encuentra dentro de un yacimiento se utiliza la siguiente ecuación:
+### Para que sirve la predicción de tipos de roca?
+
+En el negocio de la extracción de hidrocarburos es esencial estimar el volumen de hidrocarburos ( haremos el ejemplo del petróleo). Para determinar el volumen de petróleo que existe en un yacimiento se utiliza la siguiente formula:
 
 $$
 STOIIP = \frac{GRV * NG * \phi * (1-Sw)}{Bo}  
@@ -18,17 +20,39 @@ $$
 
 Donde:
 
-STOIIP : es el volumen de petróleo en superficie (fuera del yacimiento), las unidades varían dependiendo del país. Por ejemplo en España se reportan barriles, en China en Toneladas métricas y en otros sitios en metros cúbicos.
+*STOIIP* : es el volumen de petróleo en superficie (fuera del yacimiento), las unidades varían dependiendo del país. Por ejemplo en España se reportan barriles, en China en Toneladas métricas y en otros sitios en metros cúbicos. Las siglas vienen del inglés y se traduce aproximadamente a : volumen de petroleo originalmente en sitio.
 
-GRV: Gross Rock Volume, es el volúmen de roca que ocupa el yacimiento. El volumen que nos interresa es el volumen sobre el contacto Agua-Petroleo ya que el Petróleo siempre se encuentra sobre agua.
+*GRV*: Gross Rock Volume, es el volúmen de roca que ocupa el yacimiento. El volumen que nos interesa es el localizado sobre el contacto Agua-Petroleo ya que el Petróleo siempre se encuentra sobre agua.
 
-NG: (Net to Gross) es una fracción que nos indica que proporción de las rocas contenidas en el GRV son rocas reservorio que contienen petroleo, los valores van de 0 a 1.
+*NG*: (Net to Gross) es una fracción que nos indica que proporción de las rocas contenidas en el GRV son rocas reservorio que contienen petroleo, los valores van de 0 a 1.
 
 $\phi$ : representa la porosidad en fracción, esto es el volumen de la roca que contiene fluido.
 
-Sw: es la Saturación de agua en fracción, nos dice que proporción del poro esta lleno de agua ( la porporción remanente estará llena de petroleo.
+*Sw*: es la Saturación de agua en fracción, nos dice que proporción del poro esta lleno de agua ( la porporción remanente estará llena de petroleo.
 
-Bo: Es el factor de compresibilidad del petroleo, nos indica cuanto se expande el liquido en el proceso de ser llevado a superficie, normalmente son valores que oscilan entre poco mas de 1 y valores cercanos a 1.7
+*Bo*: Es el factor de compresibilidad del petroleo, nos indica cuanto se expande el liquido en el proceso de ser llevado a superficie, normalmente son valores que oscilan entre poco mas de 1 y valores cercanos a 1.7
+
+Si analizamos la ecuación hay 3 términos que dependen del tipo de roca que se encuentra en el yacimiento. La porosidad , la saturación y el NG. La relación de cada una de estas variables con la calidad de la roca va mas allá del alcance de este estudio, pero es importante saber que determinar los tipos de roca que conforman un yacimiento asi como su distribución espacial es esencial para tener un estimado razonable de los volumenes que se han encontrado.
+
+### Los datos:
+
+Los datos que utilizaremos son datos públicos del mar del norte, para facilitar el acceso a los mismos los vamos a sacar de la base de datos del concurso [FORCE 2020](https://github.com/bolgebrygg/Force-2020-Machine-Learning-competition) y datos adicionales de la pagina del [Norwegian Petroleum Directorate](https://factpages.npd.no/en/wellbore/pageview/exploration/all) (NPD).
+
+Los datos que vamos a seleccionar nos van a permitir atacar un problema que tradicionalmente resolvemos de manera manual. Sin embargo el proceso que realizaremos difiere del presentado en el concurso, para representar de manera fiel el problema que afrontamos en la mayoría de los campos en esta industria.
+
+De la página del concurso tomaremos los datos de los pozos que son medidas que se realizan durante la perforación y en los dias subsiguientes para caracterizar las rocas a lo largo de la trayectoria de cada pozo.
+
+Los datos del concurso vienen con unas etiquetas que identifican el tipo de roca a lo largo del pozo, sin embargo las etiquetas originales solo existen en zonas donde se extrajo un núcleo (Core) que se extrae la roca directamente del yacimiento y se analiza en el laboratorio, eliminando toda duda sobre el tipo de roca.
+
+De la página del [Norwegian Petroleum Directorate](https://factpages.npd.no/en/wellbore/pageview/exploration/all) vamos a extraer las profundidades que corresponden a estos núcleos, y a partir de estos realizaremos el ejercicio de prediccion de tipos de roca en el grupo Brent.
+
+### Yacimiento de interés
+
+Nos vamos a enfocar en el grupo BRENT, cuyo nombre viene del campo Brent que se encuentra dentro de una terraza fallada con tendencia N-S, situada in la cuenca "East Shetland" in el margen oeste del "North Viking Graben", UKNS. EL campo Brent fué descubierto en 1971 y en esta zona del Mar del Norte hidrocarburos fueron encontrados en rocas del Jurásico Medio que fueron bautizadas como el grupo Brent y del Jurásico temprano/Triasico, en la formación Statfjiord. EL grupo Brent esta formado de sedimentos marinos someros, sedimentos marinos marginales y no marinos. EL grupo Brent sesta fomrado por 5 unidades Lithoestratigráficas llamadas Broom, Rannoch, Etive, Ness y Tarbert.
+
+https://www.earthdoc.org/content/papers/10.3997/2214-4609.201405142
+
+### Pozos del concurso
 
 ```{r}
 #| echo: false
@@ -36,8 +60,9 @@ Bo: Es el factor de compresibilidad del petroleo, nos indica cuanto se expande e
 #| warning: false
 
 library(readr)
-library(tidyverse)
+library(petroreadr)
 library(readxl)
+library(tidyverse)
 ```
 
 ```{r}
@@ -45,9 +70,23 @@ library(readxl)
 #| message: false
 #| warning: false
 
+# script para cargar los datos, no hace falta correrlo ya que termina salvando los datos en un RDS
 
-logs <- read_rds("../data/logs.rds")
-unique(logs$)
+# source("00_carga de_datos.R")
+
+logs <- read_rds("../data/logs_force2020.RDS")
+
+```
+
+El concurso tiene una base de datos de `r nrow(logs)` sin embargo no todos ellos llegan al grupo Brent, por lo que descargamos del NPD un fichero que contiene las profundidades a las que encontramos las distintas formaciones, cargamos el fichero y se lo agregamos a nuestro dataframe de registros de pozos.
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+
+
+
 
 ```
 

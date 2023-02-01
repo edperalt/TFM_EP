@@ -69,7 +69,15 @@ for (i in 1:nrow(nor_fm)) {
            )
 }
 
-#saveRDS(temp, "data/logs.rds")
+brent_group <- c("Ness Fm. Top", "Etive Fm. Top", "Rannoch Fm. Top","Tarbert Fm. Top","Broom Fm. Top")
+
+logs <- temp %>% 
+  mutate(brent = ifelse(fm %in% brent_group, TRUE, FALSE ))
+
+wells_brent <- unique(logs %>% filter(brent == TRUE) %>% pull(well))
+
+
+#saveRDS(logs, "data/logs_litho.rds")
 
 # unique(temp$fm)
 
@@ -142,4 +150,8 @@ nor_wells %>% drop_na(wlbFormationWithHc1)
   count(wlbFormationWithHc1) %>% 
   arrange(desc(n))
 
+  
+  
+  
+  
 
