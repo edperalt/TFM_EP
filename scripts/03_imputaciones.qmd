@@ -1,0 +1,177 @@
+---
+title: "Imputaciones"
+format: docx
+editor: visual
+---
+
+## 
+
+```{r}
+#| include: false
+#| label: libraries
+
+library(flextable)
+library(moments)
+library(tidyverse)
+library(tidymodels)
+```
+
+```{r}
+#| include: false
+
+list_logs_to_impute <-read_rds("../data/list_logs_to_impute.rds")
+for_input <- read_rds("../data/logs_to_impute.rds")
+```
+
+### Metodos de imputacion
+
+Vamos aprobar distintos métodos de imputación para las distintas variables
+
+```{r}
+
+  
+imput_rec <- recipe(DEPTH_MD ~ . , data = for_input %>% select(-c(well, fm)) )
+imputed_knn <-   
+  imput_rec %>% 
+  step_impute_knn( all_predictors(),
+                  # columns = "Cholesterol" 
+                  ) %>% 
+  prep(for_input) %>% 
+  bake(for_input)
+
+imputed_bag <-   
+  imput_rec %>% 
+  step_impute_bag(all_predictors(),
+                  # columns = "Cholesterol" 
+                  ) %>% 
+  prep(for_input) %>% 
+  bake(for_input)
+
+imputed_lin <-   
+  imput_rec %>% 
+  step_impute_linear(list_logs_to_impute$Variable_Name,
+                     impute_with = imp_vars(CALI, RDEP, RSHA, RMED,SP,DTC,NPHI, PEF, GR, RHOB, DRHO, bit_size)
+                  # columns = "Cholesterol" 
+                  ) %>% 
+  prep(for_input) %>% 
+  bake(for_input)
+
+imputed_mean <-   
+  imput_rec %>% 
+  step_impute_mean(list_logs_to_impute$Variable_Name
+                  # columns = "Cholesterol" 
+                  ) %>% 
+  prep(for_input) %>% 
+  bake(for_input)
+
+imputed_median <-   
+  imput_rec %>% 
+  step_impute_median(list_logs_to_impute$Variable_Name
+                  # columns = "Cholesterol" 
+                  ) %>% 
+  prep(for_input) %>% 
+  bake(for_input)
+
+```
+
+```{r}
+all_imputed <-
+imputed_knn %>% select(list_logs_to_impute$Variable_Name) %>% mutate(imp="knn") %>% 
+  bind_rows(for_input      %>% select(list_logs_to_impute$Variable_Name) %>% mutate(imp="orig"))%>% 
+  bind_rows(imputed_bag    %>% select(list_logs_to_impute$Variable_Name) %>% mutate(imp="bag" ))%>% 
+  # bind_rows(imputed_lin    %>% select(list_logs_to_impute$Variable_Name) %>% mutate(imp="lin" ))%>% 
+  bind_rows(imputed_mean   %>% select(list_logs_to_impute$Variable_Name) %>% mutate(imp="mean"))%>% 
+  bind_rows(imputed_median %>% select(list_logs_to_impute$Variable_Name) %>% mutate(imp="median"))%>%   pivot_longer(-imp,values_to = "value", names_to = "data") 
+
+all_imputed %>% 
+  ggplot(aes(value, color=imp))+
+  geom_density()+
+  facet_wrap(vars(data), scales = "free",nrow = 2)+
+  theme_bw()
+```
+
+```{r}
+
+
+  all_imputed %>%
+  filter(data == "RHOB",
+         imp %in% c("bag", "knn", "orig")) %>% 
+  ggplot(aes(value, color=imp))+
+  geom_density()+
+  facet_wrap(vars(data), scales = "free",nrow = 2)+
+  theme_bw()
+
+
+
+```
+
+```{r}
+
+  all_imputed %>%
+  filter(data == "DRHO",
+         imp %in% c("bag", "knn", "orig")) %>% 
+  ggplot(aes(value, color=imp))+
+  geom_density()+
+  facet_wrap(vars(data), scales = "free",nrow = 2)+
+  theme_bw()
+```
+
+```{r}
+
+  all_imputed %>%
+  filter(data == "PEF",
+         imp %in% c("bag", "knn", "orig")) %>% 
+  ggplot(aes(value, color=imp))+
+  geom_density()+
+  facet_wrap(vars(data), scales = "free",nrow = 2)+
+  theme_bw()+
+    scale_x_log10()
+```
+
+```{r}
+
+  all_imputed %>%
+  filter(data == "SP",
+         imp %in% c("bag", "knn","orig")) %>% 
+  ggplot(aes(value, color=imp))+
+  geom_density()+
+  facet_wrap(vars(data), scales = "free",nrow = 2)+
+  theme_bw()
+```
+
+```{r}
+
+all_imputed %>% filter(data == "SP") %>% 
+  group_by(imp) %>% 
+  summarise(mean     = round(mean(value, na.rm=TRUE),1),
+            median   = round(median(value, na.rm = TRUE),1),
+            sd       = round(sd(value, na.rm = TRUE),1),
+            kurtosis = round(kurtosis(value, na.rm = TRUE),1),
+            bias =     round(skewness(value, na.rm = TRUE),2 )) %>% 
+  flextable() %>% 
+  fontsize(size = 8,part = "all") %>% 
+  bold(part = "header") %>% 
+  bold(i=5, part = "body") %>% 
+  color(i=5, color = "red", part = "body") %>% 
+  fontsize(i=5, size = 10,part = "body") %>%
+    color(i=c(3), j=2,  color = "darkgreen", part = "body") %>% 
+  bold(i=c(3), j=2,   part = "body") %>% 
+  fontsize(i=c(3), j=2,size = 10,part = "body") %>%
+  color(i=c(4), j=3,  color = "darkgreen", part = "body") %>% 
+  bold(i=c(4), j=3,   part = "body") %>% 
+  fontsize(i=c(4), j=3,size = 10,part = "body") %>%
+  color(i=2, j=4,  color = "darkgreen", part = "body") %>% 
+  bold(i=2, j=4,   part = "body") %>% 
+  fontsize(i=2, j=4,size = 10,part = "body") %>%
+  color(i=c(2), j=5,  color = "darkgreen", part = "body") %>% 
+  bold(i=c(2), j=5,   part = "body") %>% 
+  fontsize(i=c(2), j=5,size = 10,part = "body") %>%
+  color(i=2, j=6,  color = "darkgreen", part = "body") %>% 
+  bold(i=2, j=6,   part = "body") %>% 
+  fontsize(i=2, j=6,size = 10,part = "body") 
+  
+```
+
+```{r}
+summary(for_input)
+```

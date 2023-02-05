@@ -1,0 +1,232 @@
+---
+title: "EDA"
+format: docx
+editor: visual
+---
+
+## EDA
+
+```{r}
+#| message: false
+#| warning: false
+#| echo: false
+
+library(SmartEDA)
+library(flextable)
+library(tidyverse)
+
+
+
+brent_logs<- read_rds("../data/logs_core_brent.rds")
+```
+
+Analizamos el dataset que tenemos a disposicion.
+
+```{r}
+#| message: false
+#| warning: false
+#| echo: false
+
+
+ExpData(data=brent_logs,type=1) %>% 
+  flextable() %>% 
+  autofit() %>% 
+  fontsize(size = 6,part = "all") %>% 
+  bold(bold = TRUE, part = "header") %>% 
+  theme_alafoli()
+  
+```
+
+Tenemos una gran cantidad de variables , observamos algunas variables que tienen menos del 50% de las mediciones, las revisaremos, pero es probable que sean registros especializados que. normalmente tienen mas alto costo y su uso es muy específico, para nuestro estudio estas curvas las descartaremos.
+
+```{r}
+#| message: false
+#| warning: false
+#| echo: false
+
+
+
+ExpData(data=brent_logs,type=2) %>% 
+  select(-Index) %>% 
+  flextable() %>% 
+  autofit() %>% 
+  fontsize(size = 6,part = "all") %>% 
+  bold(bold = TRUE, part = "header") %>% 
+  theme_alafoli()
+```
+
+Como esperabamos algunos de los registros con mayor tasa de valores nulos son registros como el de rayos gamma espectral (SGR) y el sónico de cizalla (DTS) sin embargo llama la atención que no tengamos los valores de los registros de perforación como el ROP, ROPA y MUDWEIGHT, que son mediciones que siempre se realizan y no implican costos adicionales para el operador.
+
+Un punto que es importante para los estudios que realizamos es conocer la posición de cada muestra, por lo que vamos a eliminar las 290 muestras que no tienen coordenadas.
+
+```{r}
+#| message: false
+#| warning: false
+#| echo: false
+
+brent_logs <- brent_logs %>% 
+  drop_na(DEPTH_MD)
+
+
+
+```
+
+Los registros que utilizan fuentes radioactivas, el densidad y el neutron (RHOB y NPHI) sufren de problemas cuando el pozo tiene "cavernas" y la herramienta no tiene buen contacto con la pared del pozo. En el siguiente gráfico vemos la curva del caliper en la sección de interés, la expectativa es que la curva del caliper sea lo mas constante posible ya que a lo largo de la sección de la formación Brent no se realizan cambios de diametro de los pozos. En los pozos que tenemsola información colocamos en rojo la curva del diametro del pozo. Una pozo sin problemas de cavernas tendrá la curva del caliper(CALI) muy cercana a la del diámetro del pozo (BS).
+
+```{r}
+#| message: false
+#| warning: false
+#| echo: false
+#| fig-cap: la curva del caliper (negro) en la sección de interés, la expectativa es que la curva del caliper sea lo mas constante posible ya que a lo largo de la sección de la formación Brent no se realizan cambios de diametro de los pozos. En los pozos que tenemos la información colocamos en rojo la curva del diametro del pozo (BS). Una pozo sin problemas de cavernas tendrá la curva del caliper(CALI) muy cercana al BS.
+
+
+brent_logs %>% 
+  ggplot(aes(CALI, DEPTH_MD  ))+
+  facet_wrap(vars(well), 
+             scales = "free_y"
+             )+
+  geom_path(size= 0.4)+
+  geom_path(aes(BS, DEPTH_MD), color = "red", size = 0.4)+
+  scale_y_reverse()+
+  theme_bw()
+```
+
+Del gráfico podemos concluir que tenemos potencialmente problemas de derrumbe de las paredes de los pozos, para decidir si hay zonas en las que las medidas deben ser descartadas del registro de densidad, vamos a realizar un gráfico que compara la desviacion del densidad (DRHO) con la diferencia entre el tamaño de la broca y la medida del caliper. En caso de tener desviaciones del DRHO de +/- 0,25 y de caliper de mas de 5 pulgadas vamos a asignar los datos del densidad como nulos. El tamaño de la broca lo hemos tomado de dos maneras:
+
+-   BS es el valor del tamaño de la broca, aunque en el caso del pozo 34/8-7 hemos decidido que el valor reportado es probablemente erroneo ya que los valores del caliper aunque extraños tienden a estabilizar alrededor de las 12.25 pulgadas, que es uno de los estandares de la zona.
+
+-   En el caso de los pozos en los cuales no tenemos valores de BS, hemos decidido entre 8.5 y 12.25 pulgadas dependiendo de los valores que observamos en el caliper.
+
+```{r}
+#| message: false
+#| warning: false
+#| echo: false
+#| fig-cap: Caliper por pozo en negro y el tamaño de la broca en rojo
+bit_size<- brent_logs %>% 
+  group_by(well) %>% 
+  summarise(min_cal = min(CALI, na.rm = TRUE)) %>% 
+  mutate(bit_size = 8.5)
+
+brent_logs<- brent_logs %>% left_join(bit_size, by= "well") %>% 
+  mutate(bit_size = ifelse(is.na(BS) ,bit_size, BS),
+         bit_size= ifelse(well == "34/8-7", 12.25, bit_size), 
+         bit_size = ifelse(well %in% c("31/3-2", "33/9-1", "34/7-13", "34/7-20", "34/7-21", "35/11-5", "35/12-1"), 12.25, bit_size))
+
+
+brent_logs %>% 
+  ggplot(aes(CALI, DEPTH_MD  ))+
+  facet_wrap(vars(well), 
+             scales = "free_y"
+             )+
+  geom_path(size= 0.4)+
+  geom_path(aes(bit_size, DEPTH_MD), color = "red", size = 0.4)+
+  scale_y_reverse()+
+  theme_bw()
+  
+```
+
+```{r}
+#| message: false
+#| warning: false
+#| echo: false
+#| fig-cap: Desviación del Caliper vs la desviación. de la densidad, coloreando en rojo los puntos que deben ser descartados, hay un gráfico por el tamaño de broca utilizado en la sección de interes. 
+#| 
+colors_map <- c("TRUE" = "red", "FALSE" = "blue")
+
+brent_logs %>% 
+  mutate(bad_data= ifelse(DRHO > 0.25 | DRHO< -0.25 | CALI - bit_size > 5 | CALI - bit_size < -5, TRUE, FALSE )) %>% 
+  ggplot(aes(DRHO, CALI-bit_size ))+
+  geom_point(aes(color = bad_data))+
+  facet_wrap(vars(bit_size), 
+             # scales = "free"
+             )+
+  theme_bw()+
+  theme(legend.position = "bottom")+
+   geom_hline(yintercept  =  5,    color = "grey", linetype = "dashed", size = 0.5)+
+   geom_hline(yintercept  = -5,    color = "grey", linetype = "dashed", size = 0.5)+
+   geom_vline(xintercept  = -0.25, color = "grey", linetype = "dashed", size = 0.5)+
+   geom_vline(xintercept  =  0.25, color = "grey", linetype = "dashed", size = 0.5)+
+   scale_color_manual(values = colors_map)
+
+
+```
+
+### Imputaciones
+
+Ahora que hemos corregido los valores de la densidad vamos a proceder a imputar los valores faltantes.
+
+```{r}
+#| message: false
+#| warning: false
+#| echo: false
+#| tbl-cap: Lista de. variables que necesitan imputación y porcentage de muestras a imputar
+
+logs_to_discard <- 
+  ExpData(data=for_input,type=2) %>% 
+  filter(Per_of_Missing >= 0.5 ) %>% 
+  select(Variable_Name, Per_of_Missing)
+
+for_input<- brent_logs %>%
+  mutate(bad_data= ifelse(DRHO > 0.25 | DRHO< -0.25 | CALI - bit_size > 5 | CALI - bit_size < -5, TRUE, FALSE ),
+         RHOB = ifelse(bad_data ==TRUE, NA, RHOB)) %>% 
+  select(-c(bad_data, p5, p95, gr_norm, min_cal, core, FORCE_2020_LITHOFACIES_LITHOLOGY, lith_name, brent )) %>% 
+  select(-logs_to_discard$Variable_Name)
+  
+
+write_rds(for_input, "../data/logs_to_impute.rds" )
+
+logs_to_input <- 
+ExpData(data=for_input,type=2) %>% 
+  filter(Per_of_Missing > 0 ,
+         Per_of_Missing <0.5,
+         Variable_Name != "FORCE_2020_LITHOFACIES_LITHOLOGY", 
+         Variable_Name != "lith_name",
+         Variable_Name != "gr_norm",
+         
+         ) %>% 
+  select(Variable_Name, Per_of_Missing)
+
+write_rds(logs_to_input, "../data/list_logs_to_impute.rds")
+
+  
+  
+
+
+# tibble("Variables a imputar" = logs_to_input) %>% 
+logs_to_input %>% 
+  rename("Variables a imputar"= Variable_Name, "% de nulos" = Per_of_Missing) %>% 
+  flextable() %>% 
+  autofit() %>% 
+  theme_alafoli() %>% 
+  bold(bold = TRUE, part = "header") %>% 
+  fontsize(size = 8, part = "all")
+  
+
+```
+
+```{r}
+#| message: false
+#| warning: false
+#| echo: false
+
+
+
+
+
+```
+
+```{r}
+brent_logs %>% 
+  filter(core== TRUE) %>% pull(well) %>% unique()
+```
+
+Realizaremos un ejercicio para probar distintos métodos de imputación con las variables que tienen menos de 50% de valores nulos.
+
+```{r}
+
+
+```
+
+```{r}
+brent_logs %>% pull(BS) %>% unique()
+```
