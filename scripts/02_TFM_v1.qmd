@@ -6,13 +6,21 @@ editor: visual
 
 ## 
 
-## Análisis de tipos de roca en el grupo BRENT en el horst ...
+## Descripcion del problema
 
-En el mundo petrolero tenemos una serie de retos que preveen la predicción de datos. En este caso en particular vamos a analizar la predicción de tipos de roca en un pozo a partir de interpretaciones de núcleos o corazones extraídos de pozos.
+En el mundo petrolero tenemos una serie de retos que preveen la predicción de datos. En este caso en particular vamos a analizar la predicción de tipos de roca en pozos a partir de interpretaciones de núcleos o corazones extraídos de los mismos.
+
+Para atacar este problema en igualdad de condiciones a los estudios que realizamos en la industria hemos escogido la formación geologica conocida como el grupo Brent, este grupo ha sido hasta ahora uno de los mas prolíficos en volumen producido de hidrocarburos en el mar del norte.
+
+Estas condiciones de borde
 
 ### Para que sirve la predicción de tipos de roca?
 
-En el negocio de la extracción de hidrocarburos es esencial estimar el volumen de hidrocarburos ( haremos el ejemplo del petróleo). Para determinar el volumen de petróleo que existe en un yacimiento se utiliza la siguiente formula:
+Annalizado desde un punto de vista macro, es un trabajo esencial para determinar el valor de una compañia petrolera. En la práctica el valor de una compañia petrolera se basa en sus reserva, o lo que es lo mismo la cantidad de petroleo que van a poder producir. Para saber cuanto petroleo se podrá producir es esencial saber en donde se almacena el petroleo, y como distintos tipos de roca tienen distintas propiedades que permiten almacenar petroleo, el conocer los tipos de roca y como se distribuyen es crítico para determinar el volumen de. hidrocarburo en una yacimiento.
+
+#### El calculo del volumen de hidrocarburo
+
+Para determinar el volumen de petróleo que existe en un yacimiento ( solo nos referiremos a yacimientos convencionales) se utiliza la siguiente formula:
 
 $$
 STOIIP = \frac{GRV * NG * \phi * (1-Sw)}{Bo}  
@@ -20,39 +28,27 @@ $$
 
 Donde:
 
-*STOIIP* : es el volumen de petróleo en superficie (fuera del yacimiento), las unidades varían dependiendo del país. Por ejemplo en España se reportan barriles, en China en Toneladas métricas y en otros sitios en metros cúbicos. Las siglas vienen del inglés y se traduce aproximadamente a : volumen de petroleo originalmente en sitio.
+***STOIIP*** : es el volumen de petróleo en superficie (fuera del yacimiento), las unidades varían dependiendo del país. Por ejemplo en España se reportan barriles, en China en Toneladas métricas y en otros sitios en metros cúbicos. Las siglas vienen del inglés y se traduce aproximadamente a : volumen de petroleo originalmente en sitio.
 
-*GRV*: Gross Rock Volume, es el volúmen de roca que ocupa el yacimiento. El volumen que nos interesa es el localizado sobre el contacto Agua-Petroleo ya que el Petróleo siempre se encuentra sobre agua.
+***GRV***: Gross Rock Volume, es el volúmen de roca que ocupa el yacimiento. El volumen que nos interesa es el localizado sobre el contacto Agua-Petroleo ya que el Petróleo siempre se encuentra sobre agua.
 
-*NG*: (Net to Gross) es una fracción que nos indica que proporción de las rocas contenidas en el GRV son rocas reservorio que contienen petroleo, los valores van de 0 a 1.
+*NG***:** (Net to Gross) es una fracción que nos indica que proporción de las rocas contenidas en el GRV son rocas reservorio que contienen petroleo, los valores van de 0 a 1.
 
 $\phi$ : representa la porosidad en fracción, esto es el volumen de la roca que contiene fluido.
 
-*Sw*: es la Saturación de agua en fracción, nos dice que proporción del poro esta lleno de agua ( la porporción remanente estará llena de petroleo.
+***Sw*****:** es la Saturación de agua en fracción, nos dice que proporción del poro esta lleno de agua ( la porporción remanente estará llena de petroleo.
 
-*Bo*: Es el factor de compresibilidad del petroleo, nos indica cuanto se expande el liquido en el proceso de ser llevado a superficie, normalmente son valores que oscilan entre poco mas de 1 y valores cercanos a 1.7
+***Bo*****:** Es el factor de compresibilidad del petroleo, nos indica cuanto se expande el liquido en el proceso de ser llevado a superficie, normalmente son valores que oscilan entre poco mas de 1 y valores cercanos a 1.7
 
-Si analizamos la ecuación hay 3 términos que dependen del tipo de roca que se encuentra en el yacimiento. La porosidad , la saturación y el NG. La relación de cada una de estas variables con la calidad de la roca va mas allá del alcance de este estudio, pero es importante saber que determinar los tipos de roca que conforman un yacimiento asi como su distribución espacial es esencial para tener un estimado razonable de los volumenes que se han encontrado.
+Si analizamos la ecuación hay 3 términos que dependen del tipo de roca que se encuentra en el yacimiento. La **porosidad** , la **saturación** y el **NG**. La relación de cada una de estas variables con la calidad de la roca va mas allá del alcance de este estudio, pero es importante saber que determinar los tipos de roca que conforman un yacimiento así como su distribución espacial es esencial para tener un estimado razonable de los volúmenes que se han encontrado.
 
-### Los datos:
+## Objetivo
 
-Los datos que utilizaremos son datos públicos del mar del norte, para facilitar el acceso a los mismos los vamos a sacar de la base de datos del concurso [FORCE 2020](https://github.com/bolgebrygg/Force-2020-Machine-Learning-competition) y datos adicionales de la pagina del [Norwegian Petroleum Directorate](https://factpages.npd.no/en/wellbore/pageview/exploration/all) (NPD).
+vamos a resolver este peo
 
-Los datos que vamos a seleccionar nos van a permitir atacar un problema que tradicionalmente resolvemos de manera manual. Sin embargo el proceso que realizaremos difiere del presentado en el concurso, para representar de manera fiel el problema que afrontamos en la mayoría de los campos en esta industria.
+## Datos disponibles
 
-De la página del concurso tomaremos los datos de los pozos que son medidas que se realizan durante la perforación y en los dias subsiguientes para caracterizar las rocas a lo largo de la trayectoria de cada pozo.
-
-Los datos del concurso vienen con unas etiquetas que identifican el tipo de roca a lo largo del pozo, sin embargo las etiquetas originales solo existen en zonas donde se extrajo un núcleo (Core) que se extrae la roca directamente del yacimiento y se analiza en el laboratorio, eliminando toda duda sobre el tipo de roca.
-
-De la página del [Norwegian Petroleum Directorate](https://factpages.npd.no/en/wellbore/pageview/exploration/all) vamos a extraer las profundidades que corresponden a estos núcleos, y a partir de estos realizaremos el ejercicio de prediccion de tipos de roca en el grupo Brent.
-
-### Yacimiento de interés
-
-Nos vamos a enfocar en el grupo BRENT, cuyo nombre viene del campo Brent que se encuentra dentro de una terraza fallada con tendencia N-S, situada in la cuenca "East Shetland" in el margen oeste del "North Viking Graben", UKNS. EL campo Brent fué descubierto en 1971 y en esta zona del Mar del Norte hidrocarburos fueron encontrados en rocas del Jurásico Medio que fueron bautizadas como el grupo Brent y del Jurásico temprano/Triasico, en la formación Statfjiord. EL grupo Brent esta formado de sedimentos marinos someros, sedimentos marinos marginales y no marinos. EL grupo Brent sesta fomrado por 5 unidades Lithoestratigráficas llamadas Broom, Rannoch, Etive, Ness y Tarbert.
-
-https://www.earthdoc.org/content/papers/10.3997/2214-4609.201405142
-
-### Pozos del concurso
+Los datos que utilizaremos son datos públicos del Mar del Norte, para facilitar el acceso a los mismos los vamos a utilizar de la base de datos del concurso [FORCE 2020](https://github.com/bolgebrygg/Force-2020-Machine-Learning-competition) y datos adicionales de la pagina del [Norwegian Petroleum Directorate](https://factpages.npd.no/en/wellbore/pageview/exploration/all) (NPD).
 
 ```{r}
 #| echo: false
@@ -74,16 +70,87 @@ library(tidyverse)
 
 # source("00_carga de_datos.R")
 
-logs <- read_rds("../data/logs_force2020.RDS")
+logs <- read_rds("../data/logs_force2020.RDS") %>% 
+  select(-c(del, FORCE_2020_LITHOFACIES_CONFIDENCE))
+
+
+```
+
+Los datos que vamos a seleccionar nos van a permitir atacar un problema que tradicionalmente resolvemos de manera manual. Sin embargo el proceso que realizaremos difiere del presentado en el concurso, para representar de manera fiel el problema que afrontamos en la mayoría de los campos en esta industria.
+
+De la página del concurso tomaremos los datos de los pozos ( un total de `r unique(logs$well) %>% length()` ). A lo largo de cada uno se realizan medidas que se realizan durante la perforación para caracterizar las rocas a lo largo de la trayectoria de cada pozo. Los datos son cargados utilizando la libreria [petroreadr](http://www.github.com/frenkg/petroreadr) que permite leer directamente el formato [LAS](http://www.cwls.org/products/#products-las) ( estandar de la industria para datos de registros de pozo) y crear un dataframe con los datos.
+
+la siguiente tabla muestra las columnas que mantenemos del dataset original:
+
+| Registro                         | Descripción                                 |
+|-------------------------------|-----------------------------------------|
+| well                             | Nombre del pozo                             |
+| FORCE_2020_LITHOFACIES_LITHOLOGY | tipos de roca interpretados                 |
+| RDEP                             | Medida profunda de resistividad             |
+| RSHA                             | Medida somera de resistividad               |
+| RMED                             | Medida de resistividad de profundidad media |
+| RXO                              | Resistividad de la zona lavada (invadida)   |
+| RMIC                             | Medida de microresistividad                 |
+| SP                               | Potencial espontáneo                        |
+| DTS                              | Sónico de cizalla (us/ft)                   |
+| DTC                              | Sónico compresional (us/ft)                 |
+| NPHI                             | Porosidad neutron                           |
+| PEF                              | Efecto fotoeléctrico                        |
+| GR                               | Registro de rayos gamma                     |
+| RHOB                             | Registro de densidad                        |
+| DRHOB                            | Registro de corrección de la densidad       |
+| CALI                             | Registro caliper                            |
+| BS                               | Registro del tamaño del hueco               |
+| DCAL                             | Caliper diferencial                         |
+| ROPA                             | Tasa de penetración promedio                |
+| SGR                              | Registro de rayos gamma espectral           |
+| MUDWEIGHT                        | peso del lodo de perforación                |
+| ROP                              | tasa de penetración                         |
+| DEPTH_MD                         | profundidad medida                          |
+| x_loc                            | coordenada E-W                              |
+| y_loc                            | coordenada N-S                              |
+| z_loc                            | Z(TVDSS) profundidad de la muestra          |
+
+: Datos disponibles
+
+Los datos del concurso vienen con unas etiquetas que identifican el tipo de roca a lo largo del pozo (**FORCE_2020_LITHOFACIES_LITHOLOGY**) , sin embargo las etiquetas originales solo existen en zonas donde se extrajo un núcleo (Core) eliminando toda duda sobre el tipo de roca, el resto de las etiquetas del concurso son interpretaciones realizadas por especialistas, que descartaremos en este caso para replicar los estudios a los que nos enfrentamos normalmente en esta industria.
+
+De la página del [Norwegian Petroleum Directorate](https://factpages.npd.no/en/wellbore/pageview/exploration/all) vamos a extraer las profundidades que corresponden a estos núcleos, y a partir de estos realizaremos el ejercicio de prediccion de tipos de roca en el grupo Brent.
+
+### Yacimiento de interés
+
+Nos vamos a enfocar en el grupo BRENT, cuyo nombre viene del campo Brent que se encuentra dentro de una terraza fallada con tendencia N-S, situada in la cuenca "East Shetland" in el margen oeste del "North Viking Graben", UKNS. EL campo Brent fué descubierto en 1971 y en esta zona del Mar del Norte hidrocarburos fueron encontrados en rocas del Jurásico Medio que fueron bautizadas como el grupo Brent y del Jurásico temprano/Triasico, en la formación Statfjiord. EL grupo Brent esta formado de sedimentos marinos someros, sedimentos marinos marginales y no marinos. EL grupo Brent sesta fomrado por 5 unidades Lithoestratigráficas llamadas Broom, Rannoch, Etive, Ness y Tarbert.
+
+https://www.earthdoc.org/content/papers/10.3997/2214-4609.201405142
+
+### Pozos del concurso
+
+```{r}
+
+```
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+
+# script para cargar los datos, no hace falta correrlo ya que termina salvando los datos en un RDS
+
+# source("00_carga de_datos.R")
+
+logs <- read_rds("../data/logs_force2020.RDS") %>% 
+  select(-del)
 
 ```
 
 El concurso tiene una base de datos de `r nrow(logs)` sin embargo no todos ellos llegan al grupo Brent, por lo que descargamos del NPD un fichero que contiene las profundidades a las que encontramos las distintas formaciones, cargamos el fichero y se lo agregamos a nuestro dataframe de registros de pozos.
 
 ```{r}
-#| echo: false
-#| message: false
-#| warning: false
+str(logs)
+```
+
+```{r}
+
 
 
 
@@ -105,4 +172,156 @@ cored_well_log <- logs %>%
   filter(well %in% core_well)
 
 cored_wells <- unique(cored_well_log$well)
+```
+
+## Visualizacion de los datos
+
+Antes de iniciar el proceso de visualización vamos a realizar una revisión de las estadisticas del dataset para corregir las anomalias evidentes:
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+
+raw_data <- read_rds("../data/logs_core_rds.rds")
+
+summary(raw_data)
+
+```
+
+aqui observamos las siguientes anomalías
+
+-   Hay algunas medidas que no pueden ser negativas, por lo tanto. se asignaran estos valores como NaN. Es el caso de:
+
+    -   RXO ( resistividad ),
+
+    -   GR a y SGR ( los rayos gamma normales y espectrales, solo pueden ser positivos).
+
+    -   ROPA, que es una velocidad no admite valores negativos.
+
+-   El SP tiene un valor en -999 que en pozos antiguos es utilizado como valor nulo.
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+
+xdata <- raw_data %>% 
+  mutate(RXO  = ifelse(RXO  <    0, NA , RXO  ),
+         GR   = ifelse(GR   <    0, NA , GR   ),
+         SGR  = ifelse(SGR  <    0, NA , SGR  ),
+         ROPA = ifelse(ROPA <    0, NA , ROPA ),
+         SP   = ifelse(SP  == -999, NA , SP   )
+         )
+
+```
+
+Los datos que tenemos a disposición son una mezcla de datos adquiridos bajando herramientas por el pozo, y medidas que se realizan durante la perforación, las medidas normalmente están disponibles a lo largo de todo el pozo, sin embargo los registros que dependen de herramientas están afectados por mas variables ( como el costo de las mismas). En general el registro de Rayos Gamma tiende a ser el único que existe a lo largo de todo el pozo por regulaciones gubernamentales ( en pozos modernos desde 1950-1960), muchos de los países que producen petroleo exigen este registro como mínimo.
+
+El registro de Rayos gamma para poder ser comparado pozo a pozo debe ser normalizado, y para ello es necesario realizarlo con el registro completo de cada pozo.
+
+### Normalización del registro de rayos Gamma
+
+La normalización del rayo gamma se realiza en los estudios geológicos para compensar la variabilidad en la intensidad de la señal gamma debido a factores como la heterogeneidad en la densidad y la composición de las rocas, la distribución de la radioactividad y la absorción de los rayos gamma en la superficie y en el subsuelo. La normalización permite comparar de manera más precisa los datos gamma de diferentes áreas y profundidades y obtener una representación más precisa de la distribución de la radioactividad en la subsuperficie.
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+
+
+xdata %>% filter(GR<200) %>% 
+  ggplot(aes(GR, group = well, color = well))+
+  geom_density(size= 0.2)+
+  # geom_density(data = xdata %>% filter(well == "34/8-3"), aes(GR), size =2)+
+  theme_bw()+
+  theme(legend.position = "bottom")
+```
+
+We have chosen one of the wells that have core as a reference to perform the normalization, in the next image we visualize the GR log oof thhis well.
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-cap: prueba de caption
+#| fig-cap-location: bottom
+
+ref_well <- c("35/9-10")
+ 
+xdata %>% filter( well == ref_well)  %>% 
+  ggplot(aes(GR, fill = "red"))+
+  geom_density(size= 1)+
+  # geom_histogram()+
+  theme_bw()+
+  labs(title = paste0("Curva de distribución del registro GR pozo ", ref_well),
+       y="",
+       x= "Rayos Gamma",
+       color = "",
+       )+
+  theme(legend.position = "none")
+```
+
+```{r}
+
+
+# First we estimate the quantiles
+quantiles <- xdata %>%
+  group_by(well) %>%
+  summarize(p5 = quantile(GR, probs = 0.1, na.rm = TRUE),
+            p95 = quantile(GR, probs = 0.9, na.rm = TRUE))
+# Next, join the quantiles back to the original dataframe
+xdata <- xdata %>% left_join(quantiles, by = "well")    
+
+
+
+# min_max <- xdata %>%
+#   group_by(well) %>%
+#   summarize(min = min(GR,  na.rm = TRUE),
+#             max = max(GR,  na.rm = TRUE))
+
+```
+
+\$Curve\_{norm}= Ref\_{low} + (Ref\_{high} - Ref\_{low})\*\\dfrac{CurveValue - Well\_{low}}{Well\_{high}-Well\_{low}}\$
+
+```{r}
+ref_low = quantiles %>% 
+    filter(well == ref_well) %>% 
+    pull(p5)
+ref_high = quantiles %>% 
+    filter(well == ref_well) %>% 
+    pull(p95)
+xdata<- xdata %>% 
+    mutate(gr_norm = ref_low + (ref_high - ref_low )* ((GR - p5)/(p95-p5)))
+```
+
+```{r}
+
+
+xdata %>% 
+    filter(gr_norm < 200) %>%
+    ggplot(aes(gr_norm, group=well, color = well)    )+
+    geom_density(size = 0.2)+
+    theme_bw()+
+    labs(title = paste0("Gamma Ray normalized using ", ref_well, " as reference"))+
+  theme(legend.position = "bottom")
+```
+
+### EDA
+
+Para iniciar el analisis de datos nos vamos a enfocar en la zona de interes, por lo que vamos a fltrar el dataset original a la formación BRENT.
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-cap: prueba de caption
+#| fig-cap-location: bottom
+
+brent_logs <- xdata %>% 
+  filter(brent == TRUE) %>% 
+  select(-c(del, FORCE_2020_LITHOFACIES_CONFIDENCE))
+
+# write_rds(brent_logs, "../data/logs_core_brent.rds")
+
 ```
