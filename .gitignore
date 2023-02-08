@@ -39,3 +39,6 @@ vignettes/*.pdf
 .Renviron
 *.rds
 *.pdf
+scripts/02_TFM_v1.docx
+*.docx
+*.docx
