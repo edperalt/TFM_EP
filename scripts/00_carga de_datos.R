@@ -6,10 +6,10 @@ library(tidyverse)
 
 
 # esta direccion es para correr el archivo independiente
-# path <- "../Force-2020-Machine-Learning-competition/lithology_competition/data/las_files_Lithostrat_data/"
+path <- "../Force-2020-Machine-Learning-competition/lithology_competition/data/las_files_Lithostrat_data/"
 
 # Direccion para correr el script desde un Rmd o quarto 
-path <- "../../Force-2020-Machine-Learning-competition/lithology_competition/data/las_files_Lithostrat_data/"
+#path <- "../../Force-2020-Machine-Learning-competition/lithology_competition/data/las_files_Lithostrat_data/"
 
 files <-data.frame(filename = list.files(path = path, "*.las", recursive = TRUE))
 files <- dplyr::filter(files, grepl(".las", filename)) %>%  pull(filename)
@@ -25,7 +25,7 @@ logs <- logs %>% separate(WELL, sep = " ", into = c("well", "del")) %>%
          well = ifelse(substring(well, nchar(well), nchar(well)) == "S", substring(well, 1, nchar(well) - 1), well))
 
 # salvamos en disco para acceder a ellos mas rápido
-write_rds(logs, "data/logs_force2020.RDS")
+# write_rds(logs, "data/logs_force2020.RDS")
 
 
 ######## lista de pozos en force2020
@@ -71,24 +71,25 @@ logs <- temp %>%
 
 
 wells_brent <- unique(logs %>% filter(brent == TRUE) %>% pull(well))
-
+# write_rds(wells_brent, "data/data_load/wells_brent.rds")
+wells_brent <-read_rds( "data/data_load/wells_brent.rds")
 
 # Cargamos un diccionario que tiene los codigos de los distintos tipos de roca 
 
 tipo_de_roca <- read_csv("../npd/lith_codes.csv", 
                          col_types = cols(order = col_skip()))
 
-# finalmente nos quedams con la seccion de regisro del grupo Brent y con los codigos de la lithologia
 
 logs_brent <- logs %>% 
-  filter(well %in% wells_brent, 
-         brent == TRUE) %>% 
+  filter(well %in% wells_brent) %>% 
   left_join(tipo_de_roca,
                  by = c("FORCE_2020_LITHOFACIES_LITHOLOGY" = "lith_code"))
 
 
 # saveRDS(logs_brent, "data/logs_brent.rds")
+# logs_brent <- read_rds("data/logs_brent.rds")
 
+# finalmente agregamos una columna que nos indica la sección con core dentro de la formación Brent
 ## datos de core
 
 core_data<- read_excel("data/RealPore wells status log.xlsx") %>% 
@@ -117,4 +118,9 @@ for (i in 1:nrow(brent_cored)) {
 
 final_logs <- temp
 
-final_logs %>% filter(core== TRUE) %>% count(well)
+print(paste0("There are ", 
+final_logs %>% mutate(core_brent = ifelse(core == TRUE & brent == TRUE, TRUE, FALSE) ) %>% 
+  filter(core_brent == TRUE) %>% pull(well) %>% unique() %>% length()
+, " wells with core from the BRENT formation "))
+
+saveRDS(final_logs, "data/logs_core_rds.rds")

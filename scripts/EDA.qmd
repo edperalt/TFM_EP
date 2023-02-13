@@ -20,7 +20,7 @@ library(tidyverse)
 brent_logs<- read_rds("../data/logs_core_brent.rds")
 ```
 
-Analizamos el dataset que tenemos a disposicion.
+Analizamos el dataset que tenemos a disposición.
 
 ```{r}
 #| message: false
@@ -37,7 +37,9 @@ ExpData(data=brent_logs,type=1) %>%
   
 ```
 
-Tenemos una gran cantidad de variables , observamos algunas variables que tienen menos del 50% de las mediciones, las revisaremos, pero es probable que sean registros especializados que. normalmente tienen mas alto costo y su uso es muy específico, para nuestro estudio estas curvas las descartaremos.
+Tenemos una un total de `r ncol(brent_logs)` de variables , observamos algunas de ellas les faltan mas del 50% de las mediciones, es probable que sean registros especializados que normalmente tienen mas alto costo y su uso es muy específico, por lo tanto al no estar presentes en la mayoria de los pozos no son útiles para la predicción.
+
+En la siguiente tabla revisamos las proporciones de valores nulos de las variables :
 
 ```{r}
 #| message: false
@@ -48,11 +50,52 @@ Tenemos una gran cantidad de variables , observamos algunas variables que tienen
 
 ExpData(data=brent_logs,type=2) %>% 
   select(-Index) %>% 
+  arrange(desc(Sample_n)) %>% 
   flextable() %>% 
   autofit() %>% 
   fontsize(size = 6,part = "all") %>% 
   bold(bold = TRUE, part = "header") %>% 
-  theme_alafoli()
+  theme_alafoli() %>% 
+  hline(i = 25, part = "body",border = fp_border(width = .75, color = "red")) 
+```
+
+A primera vista podemos identificar lo siguiente:
+
+-   La variable **well** es un identificador, es el nombre de cada pozo que tenemos en el estudio.
+
+-   La variable **brent** es un identificador que nos indica que los datos pertenecen al grupo Brent, en este caso como el objetivo de este estudio es analizar solamente muestras de este grupo, esta columna no aporta información.
+
+-   La variable MD_DEPTH, DEPT y son iguales ya que ambas son la profundidad medida, a lo largo de la trayectoria del pozo, y probablemente con muy alta correlación con z_loc. que representa la profundidad vertical medida desde el nivel del mar. Es muy probable que al final solo utilicemos una de estas variables porque deben tener muy alta correlación.
+
+-   Las variables que estan relacionadas al diametro del pozo, como el **Caliper**, el **DCAL** y el **BS** (tamaño de la broca), las vamos a analizar conociendo las siguientes premisas
+
+    -   Dentro de la formación **Brent** no deberiamos tener cambios de fase de perforación, lo que indica que la broca utilizada en cada pozo debe ser del mismo diametro. Esto nos permite recuperar una curva que tienen muchos nulos:
+
+        -   **BS** sabemos que en esta formación se han utilizado 3 tamaños de broca, dos de los cuales considerados estandar en la industria, (8.5 y 12.25 pulgadas respectivamente), por lo que vamos a crear una curva sintética (bit-size) en base al caliper , asignando a cada pozo el tamaño de broca que permite al caliper tener sentido.
+
+        -   DCAL la vamos a descartar porque tenemos muy muestras.
+
+    -   EL **PEF**, es una curva que depende mucho de los minerales que se utilizen en el lodo de perforación, aunque en teoría es uno de los mejores registros para identificar tipos de roca, la presencia de metales como la barita en el lodo de perforacion muchas veces dañan los resultados de este registro.
+
+    -   el **RHOB**, es un registro muy sensible a las variaciones en las paredes del pozo, si los patines de la herramienta no logran tener un buen contacto las medidas no son correctas, por lo que realizaremos un ejercicio de control de calidad de estas medidas.
+
+```{r}
+
+top_coord 
+
+
+brent_logs %>% 
+  group_by(well) %>% 
+  arrange(DEPT) %>% 
+  mutate(dx = x_loc - lead(x_loc),
+         dy = y_loc - lead(y_loc),
+         dist = sqrt(dx**2+ dy**2)) %>%
+  ungroup() %>% 
+  ggplot(aes(dist,DEPT, group = well, color = well))+
+  geom_path()+
+  scale_y_reverse()+
+  theme_minimal()
+
 ```
 
 Como esperabamos algunos de los registros con mayor tasa de valores nulos son registros como el de rayos gamma espectral (SGR) y el sónico de cizalla (DTS) sin embargo llama la atención que no tengamos los valores de los registros de perforación como el ROP, ROPA y MUDWEIGHT, que son mediciones que siempre se realizan y no implican costos adicionales para el operador.
@@ -142,13 +185,34 @@ brent_logs %>%
              )+
   theme_bw()+
   theme(legend.position = "bottom")+
-   geom_hline(yintercept  =  5,    color = "grey", linetype = "dashed", size = 0.5)+
-   geom_hline(yintercept  = -5,    color = "grey", linetype = "dashed", size = 0.5)+
-   geom_vline(xintercept  = -0.25, color = "grey", linetype = "dashed", size = 0.5)+
-   geom_vline(xintercept  =  0.25, color = "grey", linetype = "dashed", size = 0.5)+
+   geom_hline(yintercept  =  5,    color = "grey10", linetype = "dashed", size = 0.6)+
+   geom_hline(yintercept  = -5,    color = "grey10", linetype = "dashed", size = 0.6)+
+   geom_vline(xintercept  = -0.25, color = "grey10", linetype = "dashed", size = 0.6)+
+   geom_vline(xintercept  =  0.25, color = "grey10", linetype = "dashed", size = 0.6)+
    scale_color_manual(values = colors_map)
 
 
+```
+
+Observamos los valores de la densidad contra el la diferencia entre el caliper y el tamaño del hueco. los valores que estan fuera de los rangos aceptables los colocamos en rojo y van a ser descartados. En la figura anterior los graficos se presentan separando las distintas fases de los pozos ya que en general pueden tener comportamientos distintos.
+
+```{r}
+#| message: false
+#| warning: false
+#| echo: false
+#| fig-cap: PEF
+
+
+
+brent_logs %>% mutate(PEF=ifelse(PEF>10, NA, PEF)) %>% 
+  ggplot(aes(PEF, DEPTH_MD  ))+
+  facet_wrap(vars(well), 
+             scales = "free"
+             )+
+  geom_path(size= 0.4)+
+  geom_vline(xintercept = 10, color = "red", size = 0.5, linetype = "dashed")+
+  scale_y_reverse()+
+  theme_bw()
 ```
 
 ### Imputaciones
