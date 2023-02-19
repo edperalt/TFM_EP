@@ -1,0 +1,663 @@
+---
+title: "TFM"
+format: docx
+editor: visual
+bibliography: references.bib
+---
+
+## 
+
+## Descripcion del problema
+
+En el mundo petrolero tenemos una serie de retos que preveen la predicción de datos. En este caso en particular vamos a analizar la predicción de tipos de roca en pozos a partir de interpretaciones de núcleos o corazones extraídos de los mismos.
+
+Para atacar este problema en igualdad de condiciones a los estudios que realizamos en la industria hemos escogido la formación geologica conocida como el grupo Brent, este grupo ha sido hasta ahora uno de los mas prolíficos en volumen producido de hidrocarburos en el mar del norte.
+
+como restringimos el problema?
+
+En este tipo de estudio tenemos que considerar muy bien el set de datos que vamos a utilizar, la razon es que nosotros utilizamos como método de etiquetado de los tipos de roca, solamente los núcleos o corazones que tenemos a disposición. Normalmente extraer nucleos es muy costoso y esto se realiza en pozos exploratorios que permiten entender el campo, po rla misma razon estos pozostienden a tener una suite muy completa de registros especializados para poder obtener la mejor descripción. posible del reservorio, sin embargo, en los siguientes pozos normalmente se adquiere la minima cantidad de datos posible ( es siempre una batalla entre los geologos e ingenieros que deben predecir el comportamiento del campo, y el manejo y control de costos de la operacion. Por lo tanto es importante saber cuales son los registros que existen en el resto de pozos ya que estos son los que nos van a indicar que información podemos utilizar para construir el modelo predictivo.
+
+### Para que sirve la predicción de tipos de roca?
+
+Annalizado desde un punto de vista macro, es un trabajo esencial para determinar el valor de una compañia petrolera. En la práctica el valor de una compañia petrolera se basa en sus reserva, o lo que es lo mismo la cantidad de petroleo que van a poder producir. Para saber cuanto petroleo se podrá producir es esencial saber en donde se almacena el petroleo, y como distintos tipos de roca tienen distintas propiedades que permiten almacenar petroleo, el conocer los tipos de roca y como se distribuyen es crítico para determinar el volumen de. hidrocarburo en una yacimiento.
+
+#### El calculo del volumen de hidrocarburo
+
+Para determinar el volumen de petróleo que existe en un yacimiento ( solo nos referiremos a yacimientos convencionales) se utiliza la siguiente formula:
+
+$$
+STOIIP = \frac{GRV * NG * \phi * (1-Sw)}{Bo}  
+$$
+
+Donde:
+
+***STOIIP*** : es el volumen de petróleo en superficie (fuera del yacimiento), las unidades varían dependiendo del país. Por ejemplo en España se reportan barriles, en China en Toneladas métricas y en otros sitios en metros cúbicos. Las siglas vienen del inglés y se traduce aproximadamente a : volumen de petroleo originalmente en sitio.
+
+***GRV***: Gross Rock Volume, es el volúmen de roca que ocupa el yacimiento. El volumen que nos interesa es el localizado sobre el contacto Agua-Petroleo ya que el Petróleo siempre se encuentra sobre agua.
+
+*NG***:** (Net to Gross) es una fracción que nos indica que proporción de las rocas contenidas en el GRV son rocas reservorio que contienen petroleo, los valores van de 0 a 1.
+
+$\phi$ : representa la porosidad en fracción, esto es el volumen de la roca que contiene fluido.
+
+***Sw*****:** es la Saturación de agua en fracción, nos dice que proporción del poro esta lleno de agua ( la porporción remanente estará llena de petroleo.
+
+***Bo*****:** Es el factor de compresibilidad del petroleo, nos indica cuanto se expande el liquido en el proceso de ser llevado a superficie, normalmente son valores que oscilan entre poco mas de 1 y valores cercanos a 1.7
+
+Si analizamos la ecuación hay 3 términos que dependen del tipo de roca que se encuentra en el yacimiento. La **porosidad** , la **saturación** y el **NG**. La relación de cada una de estas variables con la calidad de la roca va mas allá del alcance de este estudio, pero es importante saber que determinar los tipos de roca que conforman un yacimiento así como su distribución espacial es esencial para tener un estimado razonable de los volúmenes que se han encontrado.
+
+## Objetivo
+
+vamos a resolver este peo
+
+## Datos disponibles
+
+Los datos que utilizaremos son datos públicos del Mar del Norte, para facilitar el acceso a los mismos los vamos a utilizar de la base de datos del concurso [FORCE 2020](https://github.com/bolgebrygg/Force-2020-Machine-Learning-competition) y datos adicionales de la pagina del [Norwegian Petroleum Directorate](https://factpages.npd.no/en/wellbore/pageview/exploration/all) (NPD, @norwegia).
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+
+library(readr)
+library(contourPlot)
+library(patchwork)
+library(petroreadr)
+library(readxl)
+library(tidyverse)
+```
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+
+# script para cargar los datos, no hace falta correrlo ya que termina salvando los datos en un RDS
+
+# source("00_carga de_datos.R")
+
+logs <- read_rds("../data/logs_force2020.RDS") %>% 
+  select(-c(del, FORCE_2020_LITHOFACIES_CONFIDENCE))
+
+
+```
+
+Los datos que vamos a seleccionar nos van a permitir atacar un problema que tradicionalmente resolvemos de manera manual. Sin embargo el proceso que realizaremos difiere del presentado en el concurso, para representar de manera fiel el problema que afrontamos en la mayoría de los campos en esta industria.
+
+De la página del concurso tomaremos los datos de los pozos ( un total de `r unique(logs$well) %>% length()` ). A lo largo de cada uno se realizan medidas que se realizan durante la perforación para caracterizar las rocas a lo largo de la trayectoria de cada pozo. Los datos son cargados utilizando la libreria [petroreadr](http://www.github.com/frenkg/petroreadr) de @ravenroa que permite leer directamente el formato [LAS](http://www.cwls.org/products/#products-las) ( estandar de la industria para datos de registros de pozo) y crear un dataframe con los datos.
+
+la siguiente tabla muestra las columnas que mantenemos del dataset original:
+
+| Registro                         | Descripción                                 |
+|----------------------------------|---------------------------------------------|
+| well                             | Nombre del pozo                             |
+| FORCE_2020_LITHOFACIES_LITHOLOGY | tipos de roca interpretados                 |
+| RDEP                             | Medida profunda de resistividad             |
+| RSHA                             | Medida somera de resistividad               |
+| RMED                             | Medida de resistividad de profundidad media |
+| RXO                              | Resistividad de la zona lavada (invadida)   |
+| RMIC                             | Medida de microresistividad                 |
+| SP                               | Potencial espontáneo                        |
+| DTS                              | Sónico de cizalla (us/ft)                   |
+| DTC                              | Sónico compresional (us/ft)                 |
+| NPHI                             | Porosidad neutron                           |
+| PEF                              | Efecto fotoeléctrico                        |
+| GR                               | Registro de rayos gamma                     |
+| RHOB                             | Registro de densidad                        |
+| DRHOB                            | Registro de corrección de la densidad       |
+| CALI                             | Registro caliper                            |
+| BS                               | Registro del tamaño del hueco               |
+| DCAL                             | Caliper diferencial                         |
+| ROPA                             | Tasa de penetración promedio                |
+| SGR                              | Registro de rayos gamma espectral           |
+| MUDWEIGHT                        | peso del lodo de perforación                |
+| ROP                              | tasa de penetración                         |
+| DEPTH_MD                         | profundidad medida                          |
+| x_loc                            | coordenada E-W                              |
+| y_loc                            | coordenada N-S                              |
+| z_loc                            | Z(TVDSS) profundidad de la muestra          |
+
+Los datos del concurso vienen con unas etiquetas que identifican el tipo de roca a lo largo del pozo (**FORCE_2020_LITHOFACIES_LITHOLOGY**) , sin embargo las etiquetas originales solo existen en zonas donde se extrajo un núcleo (Core) eliminando toda duda sobre el tipo de roca, el resto de las etiquetas del concurso son interpretaciones realizadas por especialistas, que descartaremos en este caso para replicar los estudios a los que nos enfrentamos normalmente en esta industria.
+
+```{r}
+#| echo: false
+tibble(well = rep(paste0("w-", 1:35),each =2),
+       x = rep(1:35, each = 2), 
+       y= rep(c(0,10), 35),
+       z= c(rep(c(9,9, 8.5,8.5, 8,8),11),9,9,8.5,8.5)
+       # test = ifelse(
+       #  y%%2 == 0, 10, test )
+       ) %>% 
+  ggplot(aes(x,y,group=well))+
+  geom_line()+
+  geom_hline(yintercept = 10, color = "blue")+
+  geom_hline(yintercept = 6.5, color = "darkgreen")+
+  geom_hline(yintercept = 2, color = "red")+
+  geom_label(aes(x=x, y = z, label = well), size = 4)+
+  geom_label(aes(15,10, label = "La superficie"), color ="blue")+
+  geom_label(aes(15,6.5, label = "Tope del grupo Brent"), color ="darkgreen")+
+  geom_label(aes(15,2, label = "Base del grupo Brent"), color ="darkgreen")+
+  geom_rect(aes(xmin=3.6, xmax=4.4, ymin=1, ymax=5.3),
+            fill="brown", alpha=0.1)+ 
+  geom_rect(aes(xmin=6.6, xmax=7.4, ymin=3, ymax=6),
+            fill="brown", alpha=0.1)+
+  # geom_label()
+  
+  theme_void()
+  
+  
+
+
+```
+
+```{r}
+#| echo: false
+
+final_logs <- read_rds("../data/logs_core_rds.rds")
+well_names <- unique(final_logs$well)
+
+well_names <- final_logs %>% 
+  group_by(well) %>% 
+  filter(brent ==TRUE) %>% 
+  summarise(top = min(-z_loc, na.rm = TRUE)) %>% 
+  arrange(top) %>% pull(well)   # select wells organized by depth 
+
+los_pozos <- tibble(well = well_names,
+                    well_id = seq(1, length(well_names)))
+
+
+final_logs <- final_logs %>% 
+  left_join(los_pozos, by= "well") %>% 
+  group_by(well) %>% 
+  arrange(DEPT) %>% 
+  ungroup()
+
+seabed <- final_logs %>% 
+  group_by(well) %>% 
+  summarise(surface = min(DEPT, na.rm = TRUE)) %>% 
+  left_join(los_pozos, by= "well")
+
+well_top_base_md <- final_logs %>% 
+  group_by(well) %>% 
+  summarise(top_md = min(DEPT,na.rm = TRUE),
+            td_md = max(DEPT, na.rm = TRUE),
+            # top_ss = max(z_loc, na.rm = TRUE),
+            # td_ss = min(z_loc, na.rm = TRUE)
+            ) %>% 
+  left_join(los_pozos, by= "well") %>% 
+  pivot_longer(-c(well, well_id)) %>% 
+  group_by(well) %>% 
+  arrange(value) %>% 
+  ungroup()
+
+top_brent_md <- final_logs %>%
+  filter(brent== TRUE) %>% 
+  group_by(well) %>% 
+  summarise(top_brent = min(DEPT, na.rm = TRUE )) %>% 
+  left_join(los_pozos, by= "well") %>% 
+  arrange(top_brent) %>% 
+  ungroup()
+
+base_brent_md <- final_logs %>%
+  filter(brent== TRUE) %>% 
+  group_by(well) %>% 
+  summarise(bas_brent = max(DEPT, na.rm = TRUE )) %>% 
+  left_join(los_pozos, by= "well")  %>% 
+  arrange(bas_brent) %>% 
+  ungroup()
+
+label_pos <- tibble(well = well_names,
+                    pos = c(rep(c(1000,1300,1500, 1700,1900),7),1000, 1300)) %>% 
+  left_join(los_pozos, by="well")
+
+# write_rds(label_pos, "../data/label_pos.rds")
+
+well_top_base_ss <- final_logs %>% 
+  group_by(well) %>% 
+  summarise(top_ss = max(z_loc, na.rm = TRUE),
+            td_ss = min(z_loc, na.rm = TRUE)
+            ) %>% 
+  left_join(los_pozos, by= "well") %>% 
+  pivot_longer(-c(well, well_id)) %>% 
+  group_by(well) %>% 
+  arrange(value) %>% 
+  ungroup()
+
+write_rds(well_top_base_ss, "../data/well_top_base_ss.rds") 
+
+top_brent_ss <- final_logs %>%
+  filter(brent== TRUE) %>% 
+  group_by(well) %>% 
+  filter(z_loc == max(z_loc, na.rm = TRUE)) %>%
+  select(well, z_loc, x_loc, y_loc) %>% 
+  left_join(los_pozos, by= "well") %>% 
+  arrange(desc(z_loc)) %>% 
+  ungroup() 
+# saveRDS(top_brent_ss, "../data/top_brent_ss.rds")
+
+# top_brent_ss <- final_logs %>%
+#   filter(brent== TRUE) %>% 
+#   group_by(well) %>% 
+#   summarise(top_brent_ss = min(-z_loc, na.rm = TRUE )) %>% 
+#   left_join(los_pozos, by= "well") %>% 
+#   arrange(top_brent_ss) %>% 
+#   ungroup() 
+
+base_brent_ss <- final_logs %>%
+  filter(brent== TRUE) %>% 
+  group_by(well) %>% 
+  summarise(bas_brent_ss = max(-z_loc, na.rm = TRUE )) %>% 
+  left_join(los_pozos, by= "well")  %>% 
+  arrange(bas_brent_ss) %>% 
+  ungroup()
+
+# write_rds(base_brent_ss, "../data/base_brent_ss.rds")
+
+cored_brent <- final_logs %>% filter(brent == TRUE, 
+                                     core == TRUE) 
+# saveRDS(cored_brent, "../data/cored_brent.rds")
+
+unique(cored_brent$well)
+```
+
+```{r}
+#| fig-height: 12
+#| fig-width: 12
+#| echo: false
+well_top_base_ss %>% 
+  ggplot()+
+  geom_path(aes(well_id, -value, group = well))+
+  geom_hline(yintercept = 0, color = "darkblue")+
+  geom_label(aes(19, 0, label= "Nivel del mar - 0 metros"), color= "darkblue") +
+  geom_label(aes(19, 2850, label= "Top Brent"), color= "darkgreen") +
+  geom_label(aes(19, 3200, label= "Base Brent"), color= "red") +
+  geom_label(data= label_pos ,aes(x=well_id, y = pos, label = well), size = 4)+
+  geom_line(data = top_brent_ss, aes(x=well_id,y= -z_loc), color = "darkgreen") +
+  geom_line(data = base_brent_ss, aes(x=well_id, y= bas_brent_ss), color = "red") +
+  geom_point(data = cored_brent, aes(x= well_id, y=-z_loc ),color = "purple")+
+  geom_label(aes(y=3100, x = 12, label = "Sección de pozo con núcleo"), color = "purple")+
+  geom_hline(yintercept = 3000, linetype = "dashed", color = "grey80")+
+  # geom_label(aes(x=25,y =3000, label= "3000 metros"), color = "grey50")
+  scale_y_reverse()+
+  theme_void()+
+  theme(legend.position = "none")
+
+
+```
+
+```{r}
+
+```
+
+```{r}
+#| fig-height: 16
+#| fig-width: 10
+#| echo: false
+
+well_sup_coord <- final_logs %>% 
+  group_by(well) %>% 
+  drop_na(x_loc, y_loc, z_loc) %>% 
+  filter(DEPT== min(DEPT)) %>% select(well, x_loc, y_loc) %>% 
+  rename(sup_x = x_loc, sup_y = y_loc) %>% 
+  ungroup()
+
+# saveRDS(well_sup_coord, "../data/well_sup_coord.rds")
+
+well_coord <- final_logs %>% 
+  select(well, DEPT, x_loc, y_loc, z_loc) %>% 
+  left_join(well_sup_coord, by= "well") %>% 
+  drop_na(x_loc, y_loc, z_loc) %>% 
+  mutate(dx = sup_x - x_loc,
+         dy = sup_y -y_loc,
+         dist = sqrt(dx**2 + dy**2)) 
+
+pozos_vert <-
+well_coord %>% 
+  ggplot(aes(dist, z_loc, group = well, color = well))+
+  geom_path(size =1.1)+
+  geom_vline(xintercept = 0, color = "grey20",linetype = "dashed")+
+  labs(x="Distancia horizontal",
+       y= "Profundidad",
+       title = "Seccion vertical",
+       subtitle = "Comparativa de todas las trajectorias"
+       )+
+  theme_minimal()+
+  theme(legend.position = "bottom")
+
+pozos_planta <-
+well_coord %>% 
+  ggplot(aes(dx, dy, group = well, color = well))+
+  geom_path(size=1.1)+
+  labs(x="Este -Oeste",
+       y= "Sur Norte",
+       title = "Vista de planta",
+       subtitle = "Comparativa de todas las trajectorias")+
+  theme_minimal()+
+  theme(legend.position = "bottom")+
+  coord_equal()
+
+
+pozos_planta + pozos_vert+plot_layout(guides = "collect") & theme(legend.position = 'bottom')
+
+
+```
+
+```{r}
+#| fig-height: 8
+#| fig-width: 8
+#| echo: false
+#| warning: false
+#| message: false
+cored_brent_wells <- unique(cored_brent$well) 
+# saveRDS(cored_brent_wells, "../data/cored_brent_wells.rds")
+  
+well_sup_coord %>% 
+  ggplot(aes(sup_x, sup_y))+
+  geom_point(color = "grey80", size = 3)+
+  geom_point(data = well_sup_coord %>% filter(well %in% cored_brent_wells), aes(sup_x, sup_y), color= "purple", size = 3)+
+  geom_label(aes(label= well),nudge_y = 2700, size=2, nudge_x = 1000, fontface = "bold")+
+  geom_contour(data = top_brent_ss %>% drop_na(z_loc, x_loc,y_loc) ,aes(x= x_loc, y = y_loc, z = z_loc))+
+  geom_tile(aes(y=6700000, x=525000, width =60000, height =30000), fill = "white", color= "grey70")+
+  geom_point(aes(500000, 6707000), color = "grey80", size =3)+
+  geom_text( aes(520000, 6707000, label= "Pozos sin núcleo"))+
+  geom_point(aes(500000, 6693000), color = "purple", size =3, )+
+  geom_text( aes(520000, 6693000, label= "Pozos con núcleo"))+
+  geom_segment(aes(x = 540000, y = 6820000, xend = 540000, yend = 6842000), 
+                 arrow = arrow(length = unit(0.2, "cm")), color = "grey")+
+  geom_text(aes(540000, 6830000, label = "N"))+
+  coord_equal()+
+  theme_minimal()+
+  labs(x="",
+       y = "",
+       title = "Pozos que llegan a la formación Brent")
+
+
+
+
+```
+
+```{r}
+#| fig-height: 8
+#| fig-width: 8
+#| echo: false
+#| warning: false
+#| message: false
+
+well_sup_coord %>% 
+  ggplot(aes(sup_x, sup_y))+
+  geom_point(color = "grey80", size = 3)+
+  geom_point(data = well_sup_coord %>% filter(well %in% cored_brent_wells), aes(sup_x, sup_y), color= "purple", size = 3)+
+  geom_label(data = top_brent_ss, 
+             aes(x= x_loc, y= y_loc,label=round(-z_loc) ),
+             nudge_y = 2700, size=2, nudge_x = 1000, fontface = "bold")+
+  geom_contour(data = top_brent_ss %>% drop_na(z_loc, x_loc,y_loc) ,aes(x= x_loc, y = y_loc, z = z_loc))+
+  geom_tile(aes(y=6700000, x=525000, width =60000, height =30000), fill = "white", color= "grey70")+
+  geom_point(aes(500000, 6707000), color = "grey80", size =3)+
+  geom_text( aes(520000, 6707000, label= "Pozos sin núcleo"))+
+  geom_point(aes(500000, 6693000), color = "purple", size =3, )+
+  geom_text( aes(520000, 6693000, label= "Pozos con núcleo"))+
+  coord_equal()+
+  theme_minimal()+
+  labs(x="",
+       y = "")
+
+
+
+```
+
+```{r}
+
+contourPlot(top_brent_ss$x_loc, top_brent_ss$y_loc, -top_brent_ss$z_loc)
+```
+
+```{r}
+library(akima)
+xmin <- signif(min(top_brent_ss$x_loc), 5 ) -1000
+xmax <- signif(max(top_brent_ss$x_loc), 5 ) +1000
+ymin <- signif(min(top_brent_ss$y_loc), 4 ) -1000
+ymax <- signif(max(top_brent_ss$y_loc), 4 ) +1000
+
+xrange <- xmax - xmin
+yrange <- ymax - ymin
+gridint <- 1000
+
+
+
+```
+
+```{r}
+
+fld<- with(top_brent_ss, interp(x=top_brent_ss$x_loc, y=top_brent_ss$y_loc, z=top_brent_ss$z_loc, 
+                                xo=seq(xmin, xmax, length=gridint),
+                                yo=seq(ymin, ymax, length=gridint),
+                                linear = FALSE, extrap = TRUE)) 
+
+
+fld2 <- as_tibble(interp2xyz(fld))%>% 
+  mutate(z= ifelse(z >-2000, NA,  z))
+ggplot(fld2, aes(x=x, y=y, z=z, fill= z)) + geom_contour(aes(color = z))+
+  coord_equal()
+
+
+
+```
+
+```{r}
+contour(top_brent_ss$x_loc, top_brent_ss$y_loc, top_brent_ss$z_loc)
+```
+
+De la página del [Norwegian Petroleum Directorate](https://factpages.npd.no/en/wellbore/pageview/exploration/all) vamos a extraer las profundidades que corresponden a estos núcleos, y a partir de estos realizaremos el ejercicio de prediccion de tipos de roca en el grupo Brent.
+
+### Yacimiento de interés
+
+Nos vamos a enfocar en el grupo BRENT, cuyo nombre viene del campo Brent que se encuentra dentro de una terraza fallada con tendencia N-S, situada in la cuenca "East Shetland" in el margen oeste del "North Viking Graben", UKNS. EL campo Brent fué descubierto en 1971 y en esta zona del Mar del Norte hidrocarburos fueron encontrados en rocas del Jurásico Medio que fueron bautizadas como el grupo Brent y del Jurásico temprano/Triasico, en la formación Statfjiord. EL grupo Brent esta formado de sedimentos marinos someros, sedimentos marinos marginales y no marinos. EL grupo Brent sesta fomrado por 5 unidades Lithoestratigráficas llamadas Broom, Rannoch, Etive, Ness y Tarbert.
+
+https://www.earthdoc.org/content/papers/10.3997/2214-4609.201405142
+
+### Pozos del concurso
+
+```{r}
+
+
+temp <- well_coord %>% 
+  filter(well == "30/3-5")
+
+temp
+
+```
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+
+# script para cargar los datos, no hace falta correrlo ya que termina salvando los datos en un RDS
+
+# source("00_carga de_datos.R")
+
+logs <- read_rds("../data/logs_force2020.RDS") %>% 
+  select(-del)
+
+```
+
+El concurso tiene una base de datos de `r nrow(logs)` sin embargo no todos ellos llegan al grupo Brent, por lo que descargamos del NPD un fichero que contiene las profundidades a las que encontramos las distintas formaciones, cargamos el fichero y se lo agregamos a nuestro dataframe de registros de pozos.
+
+```{r}
+str(logs)
+```
+
+```{r}
+
+
+
+
+
+```
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+
+core <- read_excel("../data/RealPore wells status log.xlsx")
+
+core_well <- unique(core$Wellbore)
+```
+
+```{r}
+cored_well_log <- logs %>% 
+  filter(well %in% core_well)
+
+cored_wells <- unique(cored_well_log$well)
+```
+
+## Visualizacion de los datos
+
+Antes de iniciar el proceso de visualización vamos a realizar una revisión de las estadisticas del dataset para corregir las anomalias evidentes:
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+
+raw_data <- read_rds("../data/logs_core_rds.rds")
+
+summary(raw_data)
+
+```
+
+aqui observamos las siguientes anomalías
+
+-   Hay algunas medidas que no pueden ser negativas, por lo tanto. se asignaran estos valores como NaN. Es el caso de:
+
+    -   RXO ( resistividad ),
+
+    -   GR a y SGR ( los rayos gamma normales y espectrales, solo pueden ser positivos).
+
+    -   ROPA, que es una velocidad no admite valores negativos.
+
+-   El SP tiene un valor en -999 que en pozos antiguos es utilizado como valor nulo.
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+
+xdata <- raw_data %>% 
+  mutate(RXO  = ifelse(RXO  <    0, NA , RXO  ),
+         GR   = ifelse(GR   <    0, NA , GR   ),
+         SGR  = ifelse(SGR  <    0, NA , SGR  ),
+         ROPA = ifelse(ROPA <    0, NA , ROPA ),
+         SP   = ifelse(SP  == -999, NA , SP   )
+         )
+
+```
+
+Los datos que tenemos a disposición son una mezcla de datos adquiridos bajando herramientas por el pozo, y medidas que se realizan durante la perforación, las medidas normalmente están disponibles a lo largo de todo el pozo, sin embargo los registros que dependen de herramientas están afectados por mas variables ( como el costo de las mismas). En general el registro de Rayos Gamma tiende a ser el único que existe a lo largo de todo el pozo por regulaciones gubernamentales ( en pozos modernos desde 1950-1960), muchos de los países que producen petroleo exigen este registro como mínimo.
+
+El registro de Rayos gamma para poder ser comparado pozo a pozo debe ser normalizado, y para ello es necesario realizarlo con el registro completo de cada pozo.
+
+### Normalización del registro de rayos Gamma
+
+La normalización del rayo gamma se realiza en los estudios geológicos para compensar la variabilidad en la intensidad de la señal gamma debido a factores como la heterogeneidad en la densidad y la composición de las rocas, la distribución de la radioactividad y la absorción de los rayos gamma en la superficie y en el subsuelo. La normalización permite comparar de manera más precisa los datos gamma de diferentes áreas y profundidades y obtener una representación más precisa de la distribución de la radioactividad en la subsuperficie.
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+
+
+xdata %>% filter(GR<200) %>% 
+  ggplot(aes(GR, group = well, color = well))+
+  geom_density(size= 0.2)+
+  # geom_density(data = xdata %>% filter(well == "34/8-3"), aes(GR), size =2)+
+  theme_bw()+
+  theme(legend.position = "bottom")
+```
+
+We have chosen one of the wells that have core as a reference to perform the normalization, in the next image we visualize the GR log oof thhis well.
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-cap: prueba de caption
+#| fig-cap-location: bottom
+
+ref_well <- c("35/9-10")
+ 
+xdata %>% filter( well == ref_well)  %>% 
+  ggplot(aes(GR, fill = "red"))+
+  geom_density(size= 1)+
+  # geom_histogram()+
+  theme_bw()+
+  labs(title = paste0("Curva de distribución del registro GR pozo ", ref_well),
+       y="",
+       x= "Rayos Gamma",
+       color = "",
+       )+
+  theme(legend.position = "none")
+```
+
+```{r}
+
+
+# First we estimate the quantiles
+quantiles <- xdata %>%
+  group_by(well) %>%
+  summarize(p5 = quantile(GR, probs = 0.1, na.rm = TRUE),
+            p95 = quantile(GR, probs = 0.9, na.rm = TRUE))
+# Next, join the quantiles back to the original dataframe
+xdata <- xdata %>% left_join(quantiles, by = "well")    
+
+
+
+# min_max <- xdata %>%
+#   group_by(well) %>%
+#   summarize(min = min(GR,  na.rm = TRUE),
+#             max = max(GR,  na.rm = TRUE))
+
+```
+
+\$Curve\_{norm}= Ref\_{low} + (Ref\_{high} - Ref\_{low})\*\\dfrac{CurveValue - Well\_{low}}{Well\_{high}-Well\_{low}}\$
+
+```{r}
+ref_low = quantiles %>% 
+    filter(well == ref_well) %>% 
+    pull(p5)
+ref_high = quantiles %>% 
+    filter(well == ref_well) %>% 
+    pull(p95)
+xdata<- xdata %>% 
+    mutate(gr_norm = ref_low + (ref_high - ref_low )* ((GR - p5)/(p95-p5)))
+```
+
+```{r}
+
+
+xdata %>% 
+    filter(gr_norm < 200) %>%
+    ggplot(aes(gr_norm, group=well, color = well)    )+
+    geom_density(size = 0.2)+
+    theme_bw()+
+    labs(title = paste0("Gamma Ray normalized using ", ref_well, " as reference"))+
+  theme(legend.position = "bottom")
+```
+
+### EDA
+
+Para iniciar el analisis de datos nos vamos a enfocar en la zona de interes, por lo que vamos a fltrar el dataset original a la formación BRENT.
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-cap: prueba de caption
+#| fig-cap-location: bottom
+
+brent_logs <- xdata %>% 
+  filter(brent == TRUE) %>% 
+  select(-c(del, FORCE_2020_LITHOFACIES_CONFIDENCE))
+
+# write_rds(brent_logs, "../data/logs_core_brent.rds")
+
+```
