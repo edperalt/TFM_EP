@@ -110,6 +110,21 @@ all_imputed %>%
 ```
 
 ```{r}
+#| label: all_imput_plot
+#| echo: false
+#| fig-width: 8
+#| fig-height: 8
+
+
+all_imputed %>%
+  filter(imp %in% c("bag", "knn", "mean", "orig")) %>% 
+  ggplot(aes(value, color=imp))+
+  geom_density()+
+  facet_wrap(vars(data), scales = "free",nrow = 2)+
+  theme_bw()
+```
+
+```{r}
 #| label: rhob_plot
 #| echo: false
 rhob_impute_plot <- 
@@ -617,7 +632,9 @@ Imputaciones utilizadas
 #| echo: false
 
 imput_algo <- tibble(Curva = c("CALI", "RDEP", "RSHA", "RMED", "SP", "DTC", "NPHI", "DRHO", "rhob_clean", "pef_clean" ),
-                     imput = c("knn",   "knn", "knn",  "bag",  "bag", "knn", "knn", "mean", "knn",         "bag"  )) %>% 
+                     imput = c("knn",   "knn", "knn",  "bag",  "bag", "knn", "knn", "mean", "knn",         "bag"  )) 
+
+# write_rds(imput_algo, "../data/imput_algo.rds")
   
 
 ```
