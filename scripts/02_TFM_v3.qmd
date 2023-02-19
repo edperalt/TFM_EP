@@ -1,0 +1,571 @@
+---
+title: "TFM"
+author: "Edmundo Peralta"
+toc: true
+number-sections: true
+link-citations: true
+crossref:
+  fig-title: Figura
+format:
+  docx:
+    toc: true
+    number-sections: false
+    highlight-style: github
+editor: visual
+bibliography: references.bib
+---
+
+## Descripción del problema
+
+En el mundo petrolero tenemos una serie de retos que preveen la predicción de datos, sin embargo aun cuando los algoritmos de machine learning han estado disponibles en la industria por muchos años, estos no han logrado ganarse la confianza de la industria, en parte porque las soluciones existentes era suficientemente buenas, y en parte porque el poder de computo disponible era limitado. Cuando comencé mi carrera en 1996 utilizábamos un software comercial que utilizaba el algoritmo **knn** para hacer clasificación de propiedades discretas en mapas, tenia algunas aplicaciones sin embargo solo en los últimos años el uso de estos algoritmos ha comenzado a aparecer aunque aun de manera tímida.
+
+El problema que planteamos en este estudio es uno bastante recurrente, para dar contexto al problema empezamos por analizar el negocio de los hidrocarburos ( por simplicidad vamos a hablar de el negocio del petróleo), donde el valor de una compañía productora de petróleo es igual a las reservas de petróleo que tiene. Las reservas de petróleo son todos aquellos barriles que pueden ser producidos económicamente , por lo que el cálculo de el volumen de petróleo contenido en un yacimiento es fundamental en la valoración de una compañía.
+
+El petróleo se almacena en yacimientos donde el tipo de roca condiciona cuanto petróleo se acumula por unidad de volumen de roca. Por lo tanto conocer que tipos de roca y en que proporción se encuentran en el yacimiento es clave para determinar el volumen de petroleo. Cuando se realizan pozos se realizan muchas medidas durante la perforación, existe un gran número de herramientas que se pueden bajar para medir distintas propiedades del yacimento, que permiten inferir entre otras cosas el tipo de la roca que hay.
+
+De todas las herramientas que hay, solo una permite conocer con certeza el tipo de roca, y esta es la herramienta que nos permite extraer un núcleo o corazón.
+
+### Que es un núcleo?
+
+Cuando perforamos un pozo se puede utilizar una broca que tiene un hueco cilíndrico en el centro y permite extraer un pedazo de la formación que se esta atravesando. La tecnología actual permite poder conocer la profundidad a la que se encontraba este núcleo. Existen muchos análisis que se pueden realizar que van mas allá de el alcance de este estudio, sin embargo aqui nos interesa solamente conocer el tipo de roca que se identifica en el núcleo.
+
+#### Cual es el problema de los núcleos?
+
+El proceso de extracción es un proceso lento, y en la perforación de pozos el dia de perforación cuesta entre las decenas y los cientos de miles de dolares, cualquier actividad que retrase el proceso tiene un fuerte impacto en la cuenta de resultados. Las compañías limitan este tipo de adquisiciones a lo mínimo necesario, y en algunos casos cuando las economías son muy ajustadas, se obvian totalmente.
+
+#### Limitaciones de nuestro reto
+
+Ya hemos dicho que vamos a utilizar los pozos donde conocemos los tipos de roca para entrenar el modelo que aplicaremos en el resto de los pozos, en los siguientes puntos mencionaremos las condiciones de borde que normalmente restringen los modelos que se pueden realizar:
+
+-   Los pozos que tienen núcleo normalmente son pozos Exploratorios, o pozos designados a evaluar la extensión y propiedades de cada yacimiento, por lo tanto normalmente en ellos se realizan muchas mas medidas que en la mayoría de los pozos "normales" o pozos usados para desarrollar un yacimiento. Esto limita la cantidad de medidas que podemos utilizar para construir el modelo
+
+-   Las medidas aunque muchas veces equivalentes, son en general realizadas por distintos proveedores de servicios, por lo que los resultados varían en precisión. En este caso se trata de una base de datos depurada donde parte de este trabajo se ha realzado
+
+-   La falla de herramientas de perforación es bastante comun, por lo que es probable encontrar secciones sin tener información.
+
+-   La producción del campo ( directamente relacionada con las reservas) se ve muy afectada por la presencia de anomalías en las carácterísticas petrofísicas de las rocas, por lo que el detectar correctamente rocas que por definición son outliers ( muy baja proporción) en muchos casos es crítico para el cálculo de reservas. Esto es particularmente importante cuando son rocas de muy alta permeabilidad o muy baja permeabilidad.
+
+-   Algunas herramientas sufren o ven muy afectada la calidad de la medida cuando la geometria de las paredes del pozo es muy irregular (i.e. cuando tenemos derrumbes de las paredes del pozo), o cuando se usan algunos minerales como metales pesados en el lodo de perforación lo cual afecta directamente la calidad de las medidas.
+
+Estas son algunas de las consideraciones principales que limitan nuestro estudio o cualquier estudio en este mundo, en adelante describiremos las limitaciones que encontraremos durante el desarrollo del estudio.
+
+```{r}
+#| label: librerias
+#| echo: false
+#| message: false
+#| warning: false
+
+library(readr)
+library(SmartEDA)
+library(flextable)
+library(tidyverse)
+
+```
+
+```{r}
+#| echo: false
+#| warning: false
+#| message: false
+#| label: datos para mapa 
+#| 
+
+logs_force2020    <-  read_rds("../data/logs_force2020.RDS")        # todos los registros disponibles   
+coord_all_wells   <-  read_rds("../data/coord_all_wells.rds")       # coordenadas de superficie de cada pozo  
+coord_brent_wells <-  read_rds("../data/well_sup_coord.rds")        # coordenadas de superficie de cada pozo  
+logs_brent        <-  read_rds("../data/logs_brent.rds")            # registros de todos los pozos   
+top_brent_ss      <-  read_rds("../data/top_brent_ss.rds")          # profundidad del tope del brent en cada poso SS
+cored_brent_wells <-  read_rds("../data/cored_brent_wells.rds")     # lista de pozos con nucleo     
+cored_brent       <-  read_rds("../data/cored_brent.rds")           # registros de pozos que tienen nucleos        
+well_top_base_ss  <-  read_rds("../data/well_top_base_ss.rds")      # tope y base de cada pozo en SS
+label_pos         <-  read_rds("../data/label_pos.rds")             # etiquetas de pozos en cross section
+base_brent_ss     <-  read_rds("../data/base_brent_ss.rds")         # prof de la base del brent en cada pozo
+
+```
+
+```{r}
+#| fig-height: 8
+#| label: fig-mapa
+#| fig-width: 8
+#| echo: false
+#| warning: false
+#| message: false
+#| fig-cap: "Pozos disponibles en la base de datos que atraviesan la formación Brent"
+#| cap-location: margin
+
+cored_brent_wells <- unique(cored_brent$well) 
+  
+coord_brent_wells %>% 
+  ggplot(aes(sup_x, sup_y))+
+  geom_point(color = "grey80", size = 3)+
+  geom_point(data = coord_brent_wells %>% filter(well %in% cored_brent_wells), aes(sup_x, sup_y), color= "purple", size = 3)+
+  geom_label(aes(label= well),nudge_y = 2700, size=2, nudge_x = 1000, fontface = "bold")+
+  geom_contour(data = top_brent_ss %>% drop_na(z_loc, x_loc,y_loc) ,aes(x= x_loc, y = y_loc, z = z_loc))+
+  geom_tile(aes(y=6700000, x=525000, width =60000, height =30000), fill = "white", color= "grey70")+
+  geom_point(aes(500000, 6707000), color = "grey80", size =3)+
+  geom_text( aes(520000, 6707000, label= "Pozos sin núcleo"))+
+  geom_point(aes(500000, 6693000), color = "purple", size =3, )+
+  geom_text( aes(520000, 6693000, label= "Pozos con núcleo"))+
+  geom_segment(aes(x = 542000, y = 6820000, xend = 542000, yend = 6842000), 
+                 arrow = arrow(length = unit(0.2, "cm")), color = "grey")+
+  geom_text(aes(542000, 6830000, label = "N"))+
+  coord_equal()+
+  theme_minimal()+
+  labs(x="",
+       y = ""
+       )
+
+```
+
+## Objetivo
+
+Nuestro objetivo es predecir tipos de roca en la formación Brent del mar del Norte en pozos que tienen una serie de medidas pero no se les ha extraído un núcleo. En @fig-mapa vemos en morado los pozos que vamos a utilizar para entrenar el modelo predictivo.
+
+, para ello vamos a entrenar un modelo para predecir tipos de roca utilizando pozos donde la roca la conocemos porque se extrajo un núcleo y vamos a utilizar este modelo para predecir en los pozos en los cuales solo tenemos medidas de distintos tipos, pero no conocemos el tipo de roca.
+
+## Análisis de los datos
+
+En esta sección haremos una revisión de la información disponible y los datos que vamos a utilizar en el estudio.
+
+### Datos disponibles
+
+Los datos que utilizaremos son datos públicos del Mar del Norte, para facilitar el acceso a los mismos los vamos a utilizar de la base de datos del concurso [FORCE 2020](https://github.com/bolgebrygg/Force-2020-Machine-Learning-competition) y datos adicionales de la pagina del [Norwegian Petroleum Directorate](https://factpages.npd.no/en/wellbore/pageview/exploration/all) (NPD).
+
+Tenemos a disposición un total de `r length(unique(logs_force2020$well))` pozos en la base de datos del concurso, sin embargo estamos solo interesados en pozos que han atravesado la formación Brent. en la @fig-mapatodoslosdatos podemos observar que solo los pozos localizados al norte del área llegan a la formación Brent. Es muy probable que sea debido a una erosión, pero la razón de esta división no es parte del análisis de este estudio.
+
+```{r}
+#| fig-height: 8
+#| label: fig-mapatodoslosdatos
+#| fig-width: 8
+#| echo: false
+#| warning: false
+#| message: false
+#| fig-cap: "Base de datos disponible para el estudio"
+#| fig-subcap: "Observamos en rojo los pozos que atraviesan la formación Brent y en gris todos los pozos disponibles. Es claro que la zona de interés se limita al norte de la región con datos disponibles."
+#| cap-location: margin
+coord_all_wells %>% 
+  ggplot(aes(x_loc, y_loc))+
+  geom_point(color = "grey90", size = 3)+
+  geom_point(data = coord_brent_wells,aes(sup_x, sup_y), color = "red" , size = 3)+
+  coord_equal()+
+  labs(x="", y = "")+
+  
+                # Flecha del Norte
+  
+  geom_segment(aes(x = 555500, y = 6820000, xend = 555500, yend = 6842000), 
+                 arrow = arrow(length = unit(0.2, "cm")), color = "grey")+
+  geom_text(aes(555500, 6830000, label = "N"))+
+  
+  #. Legenda
+  
+  geom_tile(aes(y=6680000, x=525000, width =120000, height =30000), fill = "white", color= "grey70")+
+  geom_point(aes(475000, 6687000), color = "grey80", size =3)+
+  geom_text( aes(523000, 6687000, label= "Pozos de la base de datos"), size = 3)+
+  geom_point(aes(475000, 6673000), color = "red", size =3, )+
+  geom_text( aes(530000, 6673000, label= "Pozos que atraviezan la fm Brent"), size = 3)+
+  
+  
+  theme_minimal()
+
+
+```
+
+Ya que visualizamos el área en donde podemos encontrar los pozos con la formación revisamos en un mapa los pozos que tienen datos de núcleo que nos permitirán construir nuestro modelo predictivo.
+
+```{r}
+#| fig-height: 8
+#| label: fig-mapa_nucleos
+#| fig-width: 8
+#| echo: false
+#| warning: false
+#| message: false
+#| fig-cap: "Pozos qeu llegan a la formación Brent y pozos que tienen núcleo de la formación Brent"
+#| cap-location: margin
+
+cored_brent_wells <- unique(cored_brent$well) 
+  
+coord_brent_wells %>% 
+  ggplot(aes(sup_x, sup_y))+
+  geom_point(color = "grey80", size = 3)+
+  geom_point(data = coord_brent_wells %>% filter(well %in% cored_brent_wells), aes(sup_x, sup_y), color= "purple", size = 3)+
+  geom_label(aes(label= well),nudge_y = 2700, size=2, nudge_x = 1000, fontface = "bold")+
+  geom_contour(data = top_brent_ss %>% drop_na(z_loc, x_loc,y_loc) ,aes(x= x_loc, y = y_loc, z = z_loc))+
+  geom_tile(aes(y=6700000, x=525000, width =60000, height =30000), fill = "white", color= "grey70")+
+  geom_point(aes(500000, 6707000), color = "grey80", size =3)+
+  geom_text( aes(520000, 6707000, label= "Pozos sin núcleo"))+
+  geom_point(aes(500000, 6693000), color = "purple", size =3, )+
+  geom_text( aes(520000, 6693000, label= "Pozos con núcleo"))+
+  geom_segment(aes(x = 542000, y = 6820000, xend = 542000, yend = 6842000), 
+                 arrow = arrow(length = unit(0.2, "cm")), color = "grey")+
+  geom_text(aes(542000, 6830000, label = "N"))+
+  coord_equal()+
+  theme_minimal()+
+  labs(x="",
+       y = ""
+       )
+
+```
+
+En el mapa confirmamos que tenemos `r length(unique(coord_brent_wells$well))`pozos que atraviesan la formación Brent y `r length(cored_brent_wells)` de ellos con núcleos que nos permiten describir los tipos de roca.
+
+Nosotros vamos a tomar la clasificación publicada por [Norwegian Petroleum Directorate](https://factpages.npd.no/en/wellbore/pageview/exploration/all) (NPD) como correcta y vamos a generar un modelo que nos permita predecir los tipos de roca en los pozos que no tienen núcleo.
+
+En los siguientes puntos vamos a describir las condiciones de borde, ya que el objetivo es describir un problema que normalmente se resuelve de manera deterministica y lenta, y la introducción de tecnicas de machine learning nos permite acceder a soluciones que aumentan nuestra productividad y calidad de las predicciones.
+
+-   Estamos interesados en rocas de la formación Brent, los procesos geológicos que generan las distintas formaciones son independientes, no solo por los tipos de roca sino por los minerales que existieron en cada época. Estas variaciones implican que para este tipo de estudios utilizar información de otras formaciones mas someras o profundas puede generar problema Sto arrivando! los modelos predictivos.
+
+-   vamos a entrenar el modelo con la información de los corazones o núcleos
+
+Para atacar este problema en igualdad de condiciones a los estudios que realizamos en la industria, vamos a restringir los datos a lo que normalmente sucede en la industria, por hemos escogido la formación geologica conocida como el grupo Brent, este grupo ha sido hasta ahora uno de los mas prolíficos en volumen producido de hidrocarburos en el mar del norte.
+
+Tendremos una ventaja para evaluar nuestros resultados ya que en el set de datos que hemos escogido, existe ya una interpretación de tipos de roca realizada por expertos en geología. Que aunque no es infalible y sabemos que tiene errores y areas de resultados subjetivos, es un buen punto de comparación.
+
+### Visualización de los datos disponibles
+
+Empezamos por revisar los datos disponible, tomando de la descripción del concurso vemos en la siguiente tabla la descripción de cada medida
+
+| Registro                          | Descripción                                            |
+|-----------------------------------|--------------------------------------------------------|
+| well                              | Nombre del pozo                                        |
+| FORCE_2020_LITHOFACIES_LITHOLOGY  | tipos de roca interpretados                            |
+| FORCE_2020_LITHOFACIES_CONFIDENCE | Medida de calidad de la interpretación de tipo de roca |
+| RDEP                              | Medida profunda de resistividad                        |
+| RSHA                              | Medida somera de resistividad                          |
+| RMED                              | Medida de resistividad de profundidad media            |
+| RXO                               | Resistividad de la zona lavada (invadida)              |
+| RMIC                              | Medida de microresistividad                            |
+| SP                                | Potencial espontáneo                                   |
+| DTS                               | Sónico de cizalla (us/ft)                              |
+| DTC                               | Sónico compresional (us/ft)                            |
+| NPHI                              | Porosidad neutron                                      |
+| PEF                               | Efecto fotoeléctrico                                   |
+| GR                                | Registro de rayos gamma                                |
+| RHOB                              | Registro de densidad                                   |
+| DRHOB                             | Registro de corrección de la densidad                  |
+| CALI                              | Registro caliper                                       |
+| BS                                | Registro del tamaño del hueco                          |
+| DCAL                              | Caliper diferencial                                    |
+| ROPA                              | Tasa de penetración promedio                           |
+| SGR                               | Registro de rayos gamma espectral                      |
+| MUDWEIGHT                         | peso del lodo de perforación                           |
+| ROP                               | tasa de penetración                                    |
+| DEPTH_MD                          | profundidad medida                                     |
+| x_loc                             | coordenada E-W                                         |
+| y_loc                             | coordenada N-S                                         |
+| z_loc                             | Z(TVDSS) profundidad de la muestra                     |
+
+: Dataset del concurso
+
+A esta lista de columnas con datos le vamos a realizar los siguientes cambios:
+
+-   Columnas adicionales:
+
+    -   **lith_name**, una con el nombre de los tipos de roca, basicamente la leyenda para la columna FORCE_2020_LITHOFACIES_LITHOLOGY, descargamos de la base de datos un diccionario que nos indica las correspondencias
+
+    -   **fm,** Una columna que nos permita conocer la formación geológica que atraviesa cada sección de pozo, para ello descargamos de la base de datos un archivo que indica la profundidad a la que se encuentra cada tope de formación
+
+    -   **brent** Una columna que nos indique la sección de cada pozo que tiene un núcleo en la formación Brent, también hemos descargado de la base de datos el listado de todas las secciones con núcleo en estos pozos y la hemos cruzado con el dataframe inicial.
+
+-   Columna a eliminar:
+
+    -   **FORCE_2020_LITHOFACIES_CONFIDENCE** es una columna utilizada en el concurso de donde estamos tomando los datos y. no tiene sentido en este estudio, por lo que la vamos a descartar.
+
+En la siguiente gráfica observamos todos los pozos que tenemos a disposición y que sección de cada uno contiene núcleo dentro de la formación Brent.
+
+```{r}
+#| label: fig-xsection
+#| fig-cap: "Sección de todos los pozos mostrando en profundidad bajo nivel del mar la formación Brent y las secciones de pozo con núcleo"
+#| fig-height: 12
+#| fig-width: 12
+#| echo: false
+#| warning: false
+#| message: false
+well_top_base_ss %>% 
+  ggplot()+
+  geom_path(aes(well_id, -value, group = well))+
+  geom_hline(yintercept = 0, color = "darkblue")+
+  geom_label(aes(19, 0, label= "Nivel del mar - 0 metros"), color= "darkblue") +
+  geom_label(aes(19, 2850, label= "Top Brent"), color= "darkgreen") +
+  geom_label(aes(19, 3200, label= "Base Brent"), color= "red") +
+  geom_label(data= label_pos ,aes(x=well_id, y = pos, label = well), size = 4)+
+  geom_line(data = top_brent_ss, aes(x=well_id,y= -z_loc), color = "darkgreen") +
+  geom_line(data = base_brent_ss, aes(x=well_id, y= bas_brent_ss), color = "red") +
+  geom_point(data = cored_brent, aes(x= well_id, y=-z_loc ),color = "purple")+
+  geom_label(aes(y=3100, x = 12, label = "Sección de pozo con núcleo"), color = "purple")+
+  geom_hline(yintercept = 3000, linetype = "dashed", color = "grey80")+
+  geom_label(aes(x=25,y =3000, label= "3000 metros"), color = "grey50")+
+  scale_y_reverse()+
+  theme_void()+
+  theme(legend.position = "none")
+```
+
+En la @fig-xsection observamos que la media de profundidad de la formación esta cercana a los 3000 metros bajo el nivel del mar, además vemos que los cuatro pozos que tienen núcleos los tienen en una rango de profundidad bastante similar, esto en general será una limitación ya que los cambios de profundidad generalmente producen cambios en la respuesta de las rocas a algunas medidas, tenemos el clásico ejemplo de la compactación, que aumenta con profundidad, por lo que la expectativa de porosidad de una misma. roca es de tener menores valores de porosidad con el aumento. de presión que conlleva el aumento de profundidad, esto es claramente una simplificación de la realidad,pero es un problema al que nos enfrentaremos.
+
+#### Control de calidad inicial
+
+Comenzamos el análisis revisando el dataframe que hemos construido, con la librería @SmartEDA
+
+```{r}
+#| message: false
+#| warning: false
+#| echo: false
+#| label: tabla_full_df
+#| tbl-cap: "Descripción de estadisticas principales del dataframe con todos los datos"
+
+brent <- logs_brent %>% 
+  filter(brent == TRUE)
+
+ExpData(data=brent,type=1) %>% 
+  flextable() %>% 
+  autofit() %>% 
+  fontsize(size = 6,part = "all") %>% 
+  bold(bold = TRUE, part = "header") %>% 
+  theme_alafoli()
+```
+
+Es claro que tenemos una gran cantidad de variable con menos de 50% de valores nulos y 2 con mas de 90% de valores nulos que debemos seguramente descartar.
+
+```{r}
+#| message: false
+#| warning: false
+#| echo: false
+#| label: tabla_df_detalle
+#| tbl-cap: "Descripción de las 30 variables disponibles para el estudio"
+
+
+
+ExpData(data=brent,type=2) %>% 
+  select(-Index) %>% 
+  arrange(desc(Sample_n)) %>% 
+  flextable() %>% 
+  autofit() %>% 
+  fontsize(size = 6,part = "all") %>% 
+  bold(bold = TRUE, part = "header") %>% 
+  theme_alafoli() %>% 
+  hline(i = 22, part = "body",border = flextable::fp_border_default(width = .75, color = "red")) 
+```
+
+Hemos colocado un limite visual en 60% de nulos, entre las medidas que tienen muchos valores nulos hay curvas especializadas como el Gamma Ray espectral (SGR) que es raramente utilizado por el costo adicional, lo que llama la atención es la falta de registros como el ROP, ROPA que son medidas que siempre se graban y no presentan un coste adicional a la operación.
+
+A primera vista podemos identificar lo siguiente:
+
+-   La variable **well** es un identificador, es el nombre de cada pozo que tenemos en el estudio.
+
+-   La variable **brent** es un identificador que nos indica que los datos pertenecen al grupo Brent, en este caso como el objetivo de este estudio es analizar solamente muestras de este grupo, esta columna no aporta información y la podemos descartar.
+
+-   Las variables que están relacionadas al diametro del pozo, como el **Caliper**, el **DCAL** y el **BS** (tamaño de la broca), las vamos a analizar siguiendo las siguientes premisas
+
+    -   Dentro de la formación **Brent** no deberiamos tener cambios de fase de perforación, lo que indica que la broca utilizada en cada pozo debe ser del mismo diametro. Esto nos permite recuperar una curva que tienen muchos nulos:
+
+        -   **BS** conociendo los valores de diametro estandar en la industria y revisando las medidas que tenemos crearemos una curva sintética en base al caliper (CAL) que esta en todos los pozos , asignando a cada pozo el tamaño de broca que permite al caliper tener sentido.
+
+        -   **DCAL** la vamos a descartar porque tenemos muy pocas muestras.
+
+    -   EL **PEF**, es una curva que depende mucho de los minerales que se utilizen en el lodo de perforación, aunque en teoría es uno de los mejores registros para identificar tipos de roca, la presencia de metales como la barita en el lodo de perforacion muchas veces dañan los resultados de este registro, vamos a realizar un análisis mas a detalle antes de decidir si la eliminamos.
+
+    -   el **RHOB**, es un registro muy sensible a las variaciones en las paredes del pozo, si los patines de la herramienta no logran tener un buen contacto las medidas no son correctas, por lo que realizaremos un ejercicio de control de calidad de estas medidas.
+
+```{r}
+#| label: limpieza_df
+#| echo: false
+#| message: false
+#| warning: false
+
+logs_brent_clean <-brent %>% 
+    select(-c(MUDWEIGHT, SGR, ROP, ROPA, RXO, DCAL, RMIC, DTS))
+
+```
+
+##### el hueco del. pozo
+
+La no uniformidad del hueco del pozo causa problemas con algunas medidas, en particular a la medida del densidad ( RHOB), por lo que haremos un control de calidad al CALI y el BS que ambos son medidas de la geometria del. pozo.
+
+```{r}
+#| label: fig-caliper
+#| message: false
+#| warning: false
+#| echo: false
+#| fig-cap: la curva del caliper (negro) en la sección de interés, la expectativa es que la curva del caliper sea lo mas constante posible ya que a lo largo de la sección de la formación Brent no se realizan cambios de diametro de los pozos. En los pozos que tenemos la información colocamos en rojo la curva del diametro del pozo (BS). Una pozo sin problemas de cavernas tendrá la curva del caliper(CALI) muy cercana al BS.
+#| fig-width: 7
+#| fig-height: 6
+
+
+logs_brent_clean %>% 
+  ggplot(aes(CALI, DEPTH_MD  ))+
+  facet_wrap(vars(well), 
+             scales = "free_y"
+             )+
+  geom_path(size= 0.4,aes( color = "CALI"))+
+  geom_path(aes(BS, DEPTH_MD, color = "BS"), size = 0.4)+
+  scale_color_manual(values = c("CALI" = "black", "BS" = "red")) +
+  scale_y_reverse()+
+  theme_bw()+
+  theme(legend.position = "bottom")+
+  labs(colour = "Curvas", 
+       x="")
+
+
+
+```
+
+En @fig-caliper vemos que el tamaño de la broca no esta en todos los pozos y algunos tienen comportamientos extraños por lo que adoptamos la siguiente estrategia:
+
+-   **BS** es el valor del tamaño de la broca, en el caso del pozo 34/8-7 el valor reportado aunque probable parece un error, decidimos utilizar los valores del caliper como indicador, considerando que tienden a estabilizar alrededor de las 12.25 pulgadas, que es uno de los estandares de la zona, por lo que asignaremos el valor de la broca a este valor.
+
+-   En el caso de los pozos en los cuales no tenemos valores de **BS**, hemos decidido entre 6, 8.5 y 12.25 pulgadas dependiendo de los valores que observamos en el caliper (**CALI**) .
+
+```{r}
+#| label: cali_bitsize
+#| message: false
+#| warning: false
+#| echo: false
+#| fig-cap: "Caliper por pozo en negro y el tamaño estimado de la broca en rojo"
+#| fig-width: 7
+#| fig-height: 6
+bit_size<- logs_brent_clean %>% 
+  group_by(well) %>% 
+  summarise(min_cal = min(CALI, na.rm = TRUE)) %>% 
+  mutate(bit_size = 8.5)
+
+brent_bs<- logs_brent_clean %>% left_join(bit_size, by= "well") %>% 
+  mutate(bit_size = ifelse(is.na(BS) ,bit_size, BS),
+         bit_size= ifelse(well == "34/8-7", 12.25, bit_size), 
+         bit_size= ifelse(well == "29/6-1",  6.00, bit_size), 
+         bit_size = ifelse(well %in% c("31/3-2", "33/9-1", "34/7-13", "34/7-20", "34/7-21", "35/11-5", "35/12-1"), 12.25, bit_size))
+
+
+brent_bs %>% 
+  ggplot(aes(CALI, DEPTH_MD  ))+
+  facet_wrap(vars(well), 
+             scales = "free_y"
+             )+
+  geom_path(size= 0.4,aes( color = "CALI"))+
+  geom_path(aes(bit_size, DEPTH_MD, color = "BS"), size = 0.4)+
+  scale_color_manual(values = c("CALI" = "black", "BS" = "red")) +
+  scale_y_reverse()+
+  theme_bw()+
+  theme(legend.position = "bottom")+
+  labs(colour = "Curvas", 
+       x="")
+```
+
+Del gráfico podemos concluir que tenemos potencialmente problemas de derrumbe de las paredes de algunos pozos como el **34/8-7**, para decidir que zonas tienen medidas que deben ser descartadas del registro de densidad, vamos a realizar un gráfico que compara la desviación del densidad (**DRHO**) con la diferencia entre el tamaño de la broca y la medida del caliper. En caso de tener desviaciones del DRHO de +/- 0,25 y de caliper de mas de 5 pulgadas vamos a asignar los datos del densidad como nulos.
+
+```{r}
+#| label: drho_dcal
+#| message: false
+#| warning: false
+#| echo: false
+#| fig-cap: Desviación del Caliper vs la desviación. de la densidad, coloreando en rojo los puntos que deben ser descartados, hay un gráfico por el tamaño de broca utilizado en la sección de interes. 
+#| fig-height: 4
+#| fig-width: 5
+#| 
+colors_map <- c("TRUE" = "red", "FALSE" = "blue")
+
+brent_qc <- brent_bs %>% 
+  mutate(bad_data= ifelse(DRHO > 0.25 | DRHO< -0.25 | CALI - bit_size > 5 | CALI - bit_size < -5, TRUE, FALSE ),
+         rhob_clean = ifelse(bad_data == FALSE, RHOB, NA)) 
+
+brent_qc %>% 
+  ggplot(aes(DRHO, CALI-bit_size ))+
+  geom_point(aes(color = bad_data))+
+  facet_wrap(vars(bit_size), 
+             # scales = "free"
+             )+
+  theme_bw()+
+  theme(legend.position = "bottom")+
+   geom_hline(yintercept  =  5,    color = "grey10", linetype = "dashed", size = 0.6)+
+   geom_hline(yintercept  = -5,    color = "grey10", linetype = "dashed", size = 0.6)+
+   geom_vline(xintercept  = -0.25, color = "grey10", linetype = "dashed", size = 0.6)+
+   geom_vline(xintercept  =  0.25, color = "grey10", linetype = "dashed", size = 0.6)+
+   scale_color_manual(values = colors_map)
+```
+
+Vamos a utilizar esta nueva variable que llamamos **bad_data** para asignar valores nulos a los valores de densidad (RHOB) que corresponden con la etiqueta de **TRUE**. En la figura anterior los graficos se presentan separando las distintas fases de los pozos ya que en general pueden tener comportamientos distintos.
+
+```{r}
+#| label: rhob_comparacion
+#| message: false
+#| warning: false
+#| echo: false
+#| fig-cap: "RHOB corregido por geometria de pozo contra RHOB original"
+#| fig-width: 7
+#| fig-height: 6
+brent_qc %>% 
+  ggplot(aes(RHOB, DEPTH_MD  ))+
+  facet_wrap(vars(well), 
+             scales = "free_y"
+             )+
+  geom_path(size= 0.4,aes( color = "RHOB"))+
+  geom_path(aes(rhob_clean, DEPTH_MD, color = "RHOB_corregido"), size = 0.4)+
+  scale_color_manual(values = c("RHOB" = "black", "RHOB_corregido" = "red")) +
+  scale_y_reverse()+
+  theme_bw()+
+  labs(colour = "Curvas", 
+       x="")+
+  theme_minimal()+
+  theme(legend.position = "bottom")
+
+```
+
+##### El PEF
+
+El registro del efecto fotoeléctrico o el PEF es uno de los mejores predictores de litología que existen, sin embargo son muy sensibles a la presencia de metales pesados, estos que normalmente no están presentes en clásticos ( como la formación Brent) sin embargo en el lodo de perforación muchas veces se agregan componentes como la barita que permiten aumentar rápidamente el peso del lodo, pero alterando totalmente las mediciones de esta herramienta.
+
+Para decidir que ruta tomar vamos a revisar este registro en todos los pozos y los compararemos con una linea en el valor de 10 barns/electron que es el valor. mas alto normalmente encontrado.
+
+```{r}
+#| label: PEF_logs
+#| message: false
+#| warning: false
+#| echo: false
+#| fig-cap: "Control de calidad y limpieza de la curva PEF"
+#| fig-width: 7
+#| fig-height: 6
+
+brent_qc2 <- brent_qc %>% mutate(pef_clean=ifelse(PEF>10, NA, PEF))
+
+brent_qc2%>% 
+  ggplot(aes(PEF, DEPTH_MD  ))+
+  facet_wrap(vars(well), 
+             scales = "free"
+             )+
+  geom_path(size= 0.4, aes(color = "PEF"))+
+  geom_path(size= 0.4, aes(pef_clean, DEPTH_MD,color = "PEF_corregido"))+
+  scale_color_manual(values = c("PEF" = "black", "PEF_corregido" = "blue")) +
+  geom_vline(xintercept = 10, color = "red", size = 0.5, linetype = "dashed")+
+  scale_y_reverse()+
+  labs(colour =  "Curvas")+
+  theme_minimal()+
+  theme(legend.position = "bottom")
+```
+
+Una vez hecha la limpieza nos falta una buena cantidad de registros, veremos que logramos hacer con imputaciones para tratar de mantener esta informacion.
+
+#### **Estadisticas Univariadas**
+
+```{r}
+#| label: univ_stats
+#| message: false
+#| warning: false
+#| echo: false
+#| tbl-cap: "Tabla de estadisticas univariadas de todos los pozos"
+
+brent_qc3 <- brent_qc2 %>% 
+  select(-c(BS,RHOB, PEF, min_cal))
+
+# write_rds(brent_qc3, "../data/brent_qc3.rds")
+
+ExpNumStat(brent_qc3,Qnt = c(0.25,0.75), Outlier = TRUE) %>% 
+  select(-c(Group, TN, NegInf, PosInf, nNeg, nPos, IQR, sum, CV, NA_Value)) %>% 
+  arrange(Per_of_Missing) %>% 
+  flextable() %>% 
+  autofit() %>% 
+  fontsize(size = 6,part = "all") %>% 
+  bold(bold = TRUE, part = "header") %>% 
+  theme_alafoli()
+  
+```
+
+Al observar las estadísticas no vemos a simple vista ningun problema salvo la necesidad inicial de realizar imputaciones para decidir qeu curvas vamos a utilizar
+
+## References
