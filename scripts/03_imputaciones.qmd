@@ -22,91 +22,253 @@ library(tidymodels)
 # list_logs_to_impute <-read_rds("../data/list_logs_to_impute.rds")
 for_input <- read_rds("../data/brent_qc3.rds")
 
-list_logs_to_impute <- tibble(Variable_Name = c("CALI","RDEP", "RSHA", "RMED", "SP", "DTC", "NPHI", "DRHO", "rhob_clean", "pef_clean" ))
+list_logs_to_impute <- tibble(Variable_Name = c("CALI","RDEP", "RSHA", "RMED", "SP", "DTC", "NPHI", "DRHO", "rhob_clean", "pef_clean", "GR"  ))
 ```
 
 ### Metodos de imputacion
 
-Vamos aprobar distintos métodos de imputación para las distintas variables
+Considerando que los pozos son practicamente verticales y los valores nulos para las coordenadas x,y. z vamos a utilizar una estrategia diferente
+
+x y el valor de la ultima coordenada
+
+z, vamos a aumentar 0,15 cada muestra
+
+```{r}
+#| label: imputacion_de_coordenadas
+#| echo: false
+#| include: false
+
+# Estimamos el valor de coord x y y para la ultima coordenada con datos y el intervalo de muetrra en la profundidad
+help_coord_imput <- for_input %>% 
+  drop_na(x_loc) %>% 
+  group_by(well) %>% 
+  mutate(depth_step = DEPT -lag(DEPT), 
+         depth_step = ifelse(is.na(depth_step), mean(depth_step, na.rm = T), depth_step)) %>% 
+  filter(DEPT == max(DEPT)) %>% 
+  select(well, DEPT, x_loc, y_loc, depth_step) %>% 
+  ungroup() %>% 
+  rename(x= "x_loc", y= "y_loc")
+
+
+temp<- for_input %>% 
+  left_join(help_coord_imput, by= c("well", "DEPT")) %>% 
+  group_by(well) %>% 
+  mutate(x = min(x, na.rm = T) ,
+         y = min(y, na.rm = T),
+         x_loc = ifelse(is.na(x_loc), x, x_loc),
+         y_loc = ifelse(is.na(y_loc), y, y_loc),
+         count = cumsum(ifelse(is.na(z_loc), 1, 0)),
+         depth_step = min(depth_step, na.rm = T),
+         z_loc = ifelse(count == 0, z_loc , -(count * depth_step) + min(z_loc, na.rm = T))
+         ) %>% 
+  ungroup()
+
+
+
+temp %>% 
+  ggplot(aes(y_loc, DEPT))+
+  geom_path(size = 2)+
+  geom_path(data = for_input, aes(y_loc, DEPT), color = "yellow", size = 0.7)+
+  facet_wrap(vars(well), scales = "free")+
+  scale_y_reverse()
+```
+
+```{r}
+#| label: coord_y_plot
+#| echo: false
+#| include: false
+#| fig-width: 8
+#| fig-height: 8
+#| warning: false
+
+coord_y_imput_plot <-
+  temp %>%
+  ggplot(aes(y_loc, DEPT)) +
+  geom_path(size = 2) +
+  geom_path(data = for_input,
+            aes(y_loc, DEPT),
+            color = "red",
+            size = 0.7) +
+  facet_wrap(vars(well), scales = "free") +
+  scale_y_reverse()+
+  theme_minimal()
+
+coord_y_imput_plot
+
+# write_rds(coord_y_imput_plot, "../data/coord_y_imput.rds")
+```
+
+```{r}
+#| label: coord_x_plot
+#| echo: false
+#| include: false
+#| fig-width: 8
+#| fig-height: 8
+#| warning: false
+
+coord_x_imput_plot <-
+  temp %>%
+  ggplot(aes(x_loc, DEPT)) +
+  geom_path(size = 2) +
+  geom_path(data = for_input,
+            aes(x_loc, DEPT),
+            color = "red",
+            size = 0.7) +
+  facet_wrap(vars(well), scales = "free") +
+  scale_y_reverse()+
+  theme_minimal()
+
+coord_x_imput_plot
+
+# write_rds(coord_x_imput_plot, "../data/coord_x_imput.rds")
+```
+
+```{r}
+#| label: coord_z_plot
+#| echo: false
+#| include: false
+#| fig-width: 8
+#| fig-height: 8
+#| warning: false
+
+coord_z_imput_plot <-
+  temp %>%
+  ggplot(aes(-z_loc, DEPT)) +
+  geom_path(size = 2) +
+  geom_path(
+    data = for_input,
+    aes(-z_loc, DEPT),
+    color = "yellow",
+    size = 0.7
+  ) +
+  facet_wrap(vars(well), scales = "free") +
+  scale_y_reverse()+
+  theme_minimal()
+
+coord_z_imput_plot
+
+# write_rds(coord_z_imput_plot, "../data/coord_z_imput.rds")
+```
 
 ```{r}
 #| label: imputacion
 #| echo: false
 #| include: false
-  
-imput_rec <- recipe(GR ~ . , data = for_input %>% select(-c(well, fm, brent, lith_name, FORCE_2020_LITHOFACIES_LITHOLOGY, bad_data)) )
-imputed_knn <-   
-  imput_rec %>% 
+
+no_model_data <- temp %>% select(well, fm, brent, lith_name, FORCE_2020_LITHOFACIES_LITHOLOGY, bad_data, x_loc, y_loc, z_loc)
+
+imput_rec <- recipe(DEPT ~ . , data = temp %>% select(-c(well, fm, brent, lith_name, FORCE_2020_LITHOFACIES_LITHOLOGY, bad_data, x_loc, y_loc,z_loc, x, y, depth_step, count)) )
+
+imputed_knn <-
+  imput_rec %>%
   step_impute_knn( all_predictors(),
-                  # columns = "Cholesterol" 
-                  ) %>% 
-  prep(for_input) %>% 
-  bake(for_input)
+                  # columns = "Cholesterol"
+                  ) %>%
+  prep(temp) %>%
+  bake(temp) %>%
+  cbind(no_model_data)
 
-imputed_bag <-   
-  imput_rec %>% 
+imputed_bag <-
+  imput_rec %>%
   step_impute_bag(all_predictors(),
-                  # columns = "Cholesterol" 
-                  ) %>% 
-  prep(for_input) %>% 
-  bake(for_input)
+                  # columns = "Cholesterol"
+                  ) %>%
+  prep(temp) %>%
+  bake(temp) %>% cbind(no_model_data)
 
-imputed_lin <-   
-  imput_rec %>% 
+imputed_lin <-
+  imput_rec %>%
   step_impute_linear(list_logs_to_impute$Variable_Name,
                      impute_with = imp_vars(DEPT)
-                  # columns = "Cholesterol" 
-                  ) %>% 
-  prep(for_input) %>% 
-  bake(for_input)
+                  # columns = "Cholesterol"
+                  ) %>%
+  prep(temp) %>%
+  bake(temp) %>%  cbind(no_model_data)
 
-imputed_mean <-   
-  imput_rec %>% 
+imputed_mean <-
+  imput_rec %>%
   step_impute_mean(list_logs_to_impute$Variable_Name
-                  # columns = "Cholesterol" 
-                  ) %>% 
-  prep(for_input) %>% 
-  bake(for_input)
+                  # columns = "Cholesterol"
+                  ) %>%
+  prep(temp) %>%
+  bake(temp) %>%  cbind(no_model_data)
 
-imputed_median <-   
-  imput_rec %>% 
+imputed_median <-
+  imput_rec %>%
   step_impute_median(list_logs_to_impute$Variable_Name
-                  # columns = "Cholesterol" 
-                  ) %>% 
-  prep(for_input) %>% 
-  bake(for_input)
+                  # columns = "Cholesterol"
+                  ) %>%
+  prep(temp) %>%
+  bake(temp) %>%
+  cbind(no_model_data)
+# 
+# 
+# 
+# 
+# 
+# write_rds(imputed_knn, "../data/imputed_knn.rds")
+# write_rds(imputed_bag, "../data/imputed_bag.rds")
+# write_rds(imputed_lin, "../data/imputed_lin.rds")
+# write_rds(imputed_mean, "../data/imputed_mean.rds")
+# write_rds(imputed_median, "../data/imputed_median.rds")
 
-step_impute_roll()
+# imputed_knn  <-    read_rds( "../data/imputed_knn.rds")
+# imputed_bag  <-    read_rds( "../data/imputed_bag.rds")
+# imputed_lin  <-    read_rds( "../data/imputed_lin.rds")
+# imputed_mean  <-   read_rds( "../data/imputed_mean.rds")
+# imputed_median  <- read_rds( "../data/imputed_median.rds")
 
 ```
 
 ```{r}
-#| label: juntar_imp
+#| label: fig-juntar_imp
 #| echo: false
 
 
-all_imputed <-
-imputed_knn %>% select(list_logs_to_impute$Variable_Name) %>% mutate(imp="knn") %>% 
-  bind_rows(for_input      %>% select(list_logs_to_impute$Variable_Name) %>% mutate(imp="orig"))%>% 
-  bind_rows(imputed_bag    %>% select(list_logs_to_impute$Variable_Name) %>% mutate(imp="bag" ))%>% 
-  bind_rows(imputed_lin    %>% select(list_logs_to_impute$Variable_Name) %>% mutate(imp="lin" ))%>%
-  bind_rows(imputed_mean   %>% select(list_logs_to_impute$Variable_Name) %>% mutate(imp="mean"))%>% 
-  bind_rows(imputed_median %>% select(list_logs_to_impute$Variable_Name) %>% mutate(imp="median"))%>%   pivot_longer(-imp,values_to = "value", names_to = "data") 
 
-all_imputed %>% 
-  ggplot(aes(value, color=imp))+
-  geom_density()+
-  facet_wrap(vars(data), scales = "free",nrow = 2)+
-  theme_bw()
+all_imputed_orig <-
+  imputed_knn %>%
+  # select(c(list_logs_to_impute$Variable_Name, "well")) %>%
+  mutate(imp = "knn") %>%
+  bind_rows(temp %>%
+              # select(c(list_logs_to_impute$Variable_Name, "well")) %>%
+              mutate(imp = "orig")) %>%
+  bind_rows(imputed_bag    %>%
+              # select(c(list_logs_to_impute$Variable_Name, "well")) %>%
+              mutate(imp = "bag")) %>%
+  bind_rows(imputed_lin    %>%
+              # select(c(list_logs_to_impute$Variable_Name, "well")) %>%
+              mutate(imp = "lin")) %>%
+  bind_rows(imputed_mean   %>%
+              # select(c(list_logs_to_impute$Variable_Name, "well")) %>%
+              mutate(imp = "mean")) %>%
+  bind_rows(imputed_median %>%
+              # select(c(list_logs_to_impute$Variable_Name, "well")) %>%
+              mutate(imp = "median"))
+
+all_imputed <- all_imputed_orig %>%
+  select(c(list_logs_to_impute$Variable_Name, "well", "imp")) %>%
+  pivot_longer(-c(well, imp),
+               values_to = "value",
+               names_to = "data")
+
+
+all_imputed %>%
+  ggplot(aes(value, color = imp)) +
+  geom_density() +
+  facet_wrap(vars(data), scales = "free", nrow = 3) +
+  theme_minimal()
 ```
 
 ```{r}
 #| label: data_imputada
 #| echo: false
 #| 
-# write_rds(all_imputed, "../data/all_imputed.rds")
+# write_rds(all_imputed,      "../data/all_imputed.rds"      )
+# write_rds(all_imputed_orig, "../data/all_imputed_orig.rds" )
 # 
-# all_imputed <- read_rds("../data/all_imputed.rds")
+# all_imputed      <- read_rds("../data/all_imputed.rds"     )
+# all_imputed_orig <- read_rds("../data/all_imputed_orig.rds")
 ```
 
 ```{r}
@@ -120,8 +282,8 @@ all_imputed %>%
   filter(imp %in% c("bag", "knn", "mean", "orig")) %>% 
   ggplot(aes(value, color=imp))+
   geom_density()+
-  facet_wrap(vars(data), scales = "free",nrow = 2)+
-  theme_bw()
+  facet_wrap(vars(data), scales = "free",nrow = 3)+
+  theme_minimal()
 ```
 
 ```{r}
@@ -375,6 +537,7 @@ we selected the knn
 
 ```{r}
 #| label: rdep_plot
+#| warning: false
 
 
 rdep_imp_plot <- 
@@ -625,16 +788,75 @@ nphi_impute_table
 # write_rds(nphi_impute_table, "../data/nphi_impute_table.rds")
 ```
 
-Imputaciones utilizadas
+### GR
+
+```{r}
+#| label: fig-gr_plot
+#| echo: false
+
+
+gr_imp_plot <- 
+  all_imputed %>%
+  filter(data == "GR",
+         imp %in% c("bag", "knn","orig", "mean")) %>% 
+  ggplot(aes(value, color=imp))+
+  geom_density()+
+  facet_wrap(vars(data), scales = "free",nrow = 2)+
+  theme_bw()+
+  scale_x_log10()
+
+gr_imp_plot
+
+# write_rds(gr_imp_plot, "../data/gr_imp_plot.rds")
+```
+
+```{r}
+#| label: gr_table
+#| echo: false
+
+
+gr_impute_table <-
+all_imputed %>% filter(data == "GR", imp %in% c("bag", "knn", "orig", "mean")) %>%
+  group_by(imp) %>%
+  summarise(mean     = round(mean(value, na.rm=TRUE),2),
+            # median   = round(median(value, na.rm = TRUE),1),
+            sd       = round(sd(value, na.rm = TRUE),2),
+            kurtosis = round(kurtosis(value, na.rm = TRUE),2),
+             bias =     round(skewness(value, na.rm = TRUE),2 )
+            ) %>%
+  flextable() %>%
+  fontsize(size = 8,part = "all") %>%
+  bold(part = "header") %>%
+  bold(i=4, part = "body") %>%
+  color(i=4, color = "red", part = "body") %>%
+  fontsize(i=4, size = 10,part = "body") %>%
+  color( i=3,  color = "darkgreen", part = "body") %>%
+  bold(i=3,   part = "body") %>%
+  fontsize(i=3,size = 10,part = "body") %>%
+  add_header_row(values = "NPHI Impute statistics",colwidths = 5)
+
+gr_impute_table
+
+# write_rds(gr_impute_table, "../data/gr_impute_table.rds")
+```
+
+## Imputaciones utilizadas
 
 ```{r}
 #| label: imputaciones_table
 #| echo: false
 
-imput_algo <- tibble(Curva = c("CALI", "RDEP", "RSHA", "RMED", "SP", "DTC", "NPHI", "DRHO", "rhob_clean", "pef_clean" ),
-                     imput = c("knn",   "knn", "knn",  "bag",  "bag", "knn", "knn", "mean", "knn",         "bag"  )) 
+imput_algo <- tibble(Curva = c("CALI", "RDEP", "RSHA", "RMED", "SP", "DTC", "NPHI", "DRHO", "rhob_clean", "pef_clean" , "GR"),
+                     imput = c("knn",   "knn", "knn",  "bag",  "bag", "knn", "knn", "mean", "knn",         "bag"  , "mean")) 
 
 # write_rds(imput_algo, "../data/imput_algo.rds")
   
 
+```
+
+Visualización de las imputaciones
+
+```{r}
+
+  
 ```
