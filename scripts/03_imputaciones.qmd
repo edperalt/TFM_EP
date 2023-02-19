@@ -19,8 +19,10 @@ library(tidymodels)
 ```{r}
 #| include: false
 
-list_logs_to_impute <-read_rds("../data/list_logs_to_impute.rds")
-for_input <- read_rds("../data/logs_to_impute.rds")
+# list_logs_to_impute <-read_rds("../data/list_logs_to_impute.rds")
+for_input <- read_rds("../data/brent_qc3.rds")
+
+list_logs_to_impute <- tibble(Variable_Name = c("CALI","RDEP", "RSHA", "RMED", "SP", "DTC", "NPHI", "DRHO", "rhob_clean", "pef_clean" ))
 ```
 
 ### Metodos de imputacion
@@ -28,9 +30,11 @@ for_input <- read_rds("../data/logs_to_impute.rds")
 Vamos aprobar distintos métodos de imputación para las distintas variables
 
 ```{r}
-
+#| label: imputacion
+#| echo: false
+#| include: false
   
-imput_rec <- recipe(DEPTH_MD ~ . , data = for_input %>% select(-c(well, fm)) )
+imput_rec <- recipe(GR ~ . , data = for_input %>% select(-c(well, fm, brent, lith_name, FORCE_2020_LITHOFACIES_LITHOLOGY, bad_data)) )
 imputed_knn <-   
   imput_rec %>% 
   step_impute_knn( all_predictors(),
@@ -50,7 +54,7 @@ imputed_bag <-
 imputed_lin <-   
   imput_rec %>% 
   step_impute_linear(list_logs_to_impute$Variable_Name,
-                     impute_with = imp_vars(CALI, RDEP, RSHA, RMED,SP,DTC,NPHI, PEF, GR, RHOB, DRHO, bit_size)
+                     impute_with = imp_vars(DEPT)
                   # columns = "Cholesterol" 
                   ) %>% 
   prep(for_input) %>% 
@@ -72,14 +76,20 @@ imputed_median <-
   prep(for_input) %>% 
   bake(for_input)
 
+step_impute_roll()
+
 ```
 
 ```{r}
+#| label: juntar_imp
+#| echo: false
+
+
 all_imputed <-
 imputed_knn %>% select(list_logs_to_impute$Variable_Name) %>% mutate(imp="knn") %>% 
   bind_rows(for_input      %>% select(list_logs_to_impute$Variable_Name) %>% mutate(imp="orig"))%>% 
   bind_rows(imputed_bag    %>% select(list_logs_to_impute$Variable_Name) %>% mutate(imp="bag" ))%>% 
-  # bind_rows(imputed_lin    %>% select(list_logs_to_impute$Variable_Name) %>% mutate(imp="lin" ))%>% 
+  bind_rows(imputed_lin    %>% select(list_logs_to_impute$Variable_Name) %>% mutate(imp="lin" ))%>%
   bind_rows(imputed_mean   %>% select(list_logs_to_impute$Variable_Name) %>% mutate(imp="mean"))%>% 
   bind_rows(imputed_median %>% select(list_logs_to_impute$Variable_Name) %>% mutate(imp="median"))%>%   pivot_longer(-imp,values_to = "value", names_to = "data") 
 
@@ -91,45 +101,169 @@ all_imputed %>%
 ```
 
 ```{r}
+#| label: data_imputada
+#| echo: false
+#| 
+# write_rds(all_imputed, "../data/all_imputed.rds")
+# 
+# all_imputed <- read_rds("../data/all_imputed.rds")
+```
 
-
+```{r}
+#| label: rhob_plot
+#| echo: false
+rhob_impute_plot <- 
   all_imputed %>%
-  filter(data == "RHOB",
+  filter(data == "rhob_clean",
          imp %in% c("bag", "knn", "orig")) %>% 
-  ggplot(aes(value, color=imp))+
-  geom_density()+
-  facet_wrap(vars(data), scales = "free",nrow = 2)+
+    ggplot(aes(value, color=imp))+
+    geom_density()+
+    facet_wrap(vars(data), scales = "free",nrow = 2)+
   theme_bw()
 
-
+rhob_impute_plot
+# saveRDS(rhob_impute_plot , "../data/rhob_impute_plot.rds")
 
 ```
 
 ```{r}
+#| label: rhob_table
+#| echo: false
+rhob_impute_table <- 
+all_imputed %>% filter(data == "rhob_clean", imp %in% c("bag", "knn", "orig", "mean")) %>% 
+  group_by(imp) %>% 
+  summarise(mean     = round(mean(value, na.rm=TRUE),2),
+            # median   = round(median(value, na.rm = TRUE),1),
+            sd       = round(sd(value, na.rm = TRUE),2),
+            kurtosis = round(kurtosis(value, na.rm = TRUE),2),
+             bias =     round(skewness(value, na.rm = TRUE),2 )
+            ) %>% 
+  flextable() %>% 
+  fontsize(size = 8,part = "all") %>% 
+  bold(part = "header") %>% 
+  bold(i=4, part = "body") %>% 
+  color(i=4, color = "red", part = "body") %>% 
+  fontsize(i=4, size = 10,part = "body") %>%
+  color( i=2,  color = "darkgreen", part = "body") %>% 
+  bold(i=2,   part = "body") %>% 
+  fontsize(i=2,size = 10,part = "body") %>% 
+  add_header_row(values = "RHOB Impute statistics",colwidths = 5)
 
+rhob_impute_table
+
+# saveRDS(rhob_impute_table, "../data/rhob_impute_table.rds")
+```
+
+```{r}
+#| label: drho_plot
+#| echo: false
+drhob_impute_plot<-
   all_imputed %>%
   filter(data == "DRHO",
-         imp %in% c("bag", "knn", "orig")) %>% 
+         imp %in% c("bag", "knn", "orig", "mean")) %>% 
   ggplot(aes(value, color=imp))+
   geom_density()+
   facet_wrap(vars(data), scales = "free",nrow = 2)+
   theme_bw()
+
+drhob_impute_plot
+
+# write_rds(drhob_impute_plot, "../data/drhob_impute_plot.rds")
 ```
 
 ```{r}
+#| label: drho_table
+#| echo: false
+drho_impute_table <- 
+all_imputed %>% filter(data == "DRHO", imp %in% c("bag", "knn", "orig", "mean")) %>% 
+  group_by(imp) %>% 
+  summarise(mean     = round(mean(value, na.rm=TRUE),2),
+            # median   = round(median(value, na.rm = TRUE),1),
+            sd       = round(sd(value, na.rm = TRUE),2),
+            kurtosis = round(kurtosis(value, na.rm = TRUE),2),
+             bias =     round(skewness(value, na.rm = TRUE),2 )
+            ) %>% 
+  flextable() %>% 
+  fontsize(size = 8,part = "all") %>% 
+  bold(part = "header") %>% 
+  bold(i=4, part = "body") %>% 
+  color(i=4, color = "red", part = "body") %>% 
+  fontsize(i=4, size = 10,part = "body") %>%
+  color( i=3,  color = "darkgreen", part = "body") %>% 
+  bold(i=3,   part = "body") %>% 
+  fontsize(i=3,size = 10,part = "body") %>% 
+  add_header_row(values = "DRHO Impute statistics",colwidths = 5)
 
-  all_imputed %>%
-  filter(data == "PEF",
-         imp %in% c("bag", "knn", "orig")) %>% 
-  ggplot(aes(value, color=imp))+
-  geom_density()+
-  facet_wrap(vars(data), scales = "free",nrow = 2)+
-  theme_bw()+
-    scale_x_log10()
+drho_impute_table
+
+# write_rds(drho_impute_table, "../data/drho_impute_table.rds")
 ```
 
-```{r}
+De los graficos y tabla seleccionamos el mean para DRHO
 
+```{r}
+# write_rds(all_imputed, "../data/all_imputed.rds")
+# 
+# all_imputed <- read_rds("../data/all_imputed.rds")
+```
+
+Probamos el PEF
+
+```{r}
+#| label: PEF_plot
+#| echo: false
+pef_imp_plot <- 
+all_imputed %>%
+  filter(data == "pef_clean",
+         imp %in% c("bag", "knn", "orig", "mean" )) %>%
+  ggplot(aes(value, color = imp)) +
+  geom_density() +
+  facet_wrap(vars(data), scales = "free", nrow = 2) +
+  theme_bw()
+
+pef_imp_plot
+# write_rds(pef_imp_plot, "../data/pef_imp_plot.rds")
+
+```
+
+revisamos la table del PEF
+
+```{r}
+#| label: PEF_table
+#| echo: false
+
+
+pef_impute_table <- 
+all_imputed %>% filter(data == "pef_clean", imp %in% c("bag", "knn", "orig", "mean")) %>% 
+  group_by(imp) %>% 
+  summarise(mean     = round(mean(value, na.rm=TRUE),2),
+            # median   = round(median(value, na.rm = TRUE),1),
+            sd       = round(sd(value, na.rm = TRUE),2),
+            kurtosis = round(kurtosis(value, na.rm = TRUE),2),
+             bias =     round(skewness(value, na.rm = TRUE),2 )
+            ) %>% 
+  flextable() %>% 
+  fontsize(size = 8,part = "all") %>% 
+  bold(part = "header") %>% 
+  bold(i=4, part = "body") %>% 
+  color(i=4, color = "red", part = "body") %>% 
+  fontsize(i=4, size = 10,part = "body") %>%
+  color( i=1,  color = "darkgreen", part = "body") %>% 
+  bold(i=1,   part = "body") %>% 
+  fontsize(i=1,size = 10,part = "body") %>% 
+  add_header_row(values = "PEF Impute statistics",colwidths = 5)
+
+pef_impute_table
+
+write_rds(pef_impute_table, "../data/pef_impute_table.rds")
+```
+
+PEF with bag
+
+```{r}
+#| label: SP_plot
+
+sp_imp_plot <- 
   all_imputed %>%
   filter(data == "SP",
          imp %in% c("bag", "knn","orig")) %>% 
@@ -137,41 +271,353 @@ all_imputed %>%
   geom_density()+
   facet_wrap(vars(data), scales = "free",nrow = 2)+
   theme_bw()
+
+sp_imp_plot
+
+# write_rds(sp_imp_plot, "../data/sp_imp_plot.rds")
 ```
 
 ```{r}
+#| label: SP_table
 
-all_imputed %>% filter(data == "SP") %>% 
+
+sp_impute_table <- 
+all_imputed %>% filter(data == "SP", imp %in% c("bag", "knn", "orig", "mean")) %>% 
   group_by(imp) %>% 
-  summarise(mean     = round(mean(value, na.rm=TRUE),1),
-            median   = round(median(value, na.rm = TRUE),1),
-            sd       = round(sd(value, na.rm = TRUE),1),
-            kurtosis = round(kurtosis(value, na.rm = TRUE),1),
-            bias =     round(skewness(value, na.rm = TRUE),2 )) %>% 
+  summarise(mean     = round(mean(value, na.rm=TRUE),2),
+            # median   = round(median(value, na.rm = TRUE),1),
+            sd       = round(sd(value, na.rm = TRUE),2),
+            kurtosis = round(kurtosis(value, na.rm = TRUE),2),
+             bias =     round(skewness(value, na.rm = TRUE),2 )
+            ) %>% 
   flextable() %>% 
   fontsize(size = 8,part = "all") %>% 
   bold(part = "header") %>% 
-  bold(i=5, part = "body") %>% 
-  color(i=5, color = "red", part = "body") %>% 
-  fontsize(i=5, size = 10,part = "body") %>%
-    color(i=c(3), j=2,  color = "darkgreen", part = "body") %>% 
-  bold(i=c(3), j=2,   part = "body") %>% 
-  fontsize(i=c(3), j=2,size = 10,part = "body") %>%
-  color(i=c(4), j=3,  color = "darkgreen", part = "body") %>% 
-  bold(i=c(4), j=3,   part = "body") %>% 
-  fontsize(i=c(4), j=3,size = 10,part = "body") %>%
-  color(i=2, j=4,  color = "darkgreen", part = "body") %>% 
-  bold(i=2, j=4,   part = "body") %>% 
-  fontsize(i=2, j=4,size = 10,part = "body") %>%
-  color(i=c(2), j=5,  color = "darkgreen", part = "body") %>% 
-  bold(i=c(2), j=5,   part = "body") %>% 
-  fontsize(i=c(2), j=5,size = 10,part = "body") %>%
-  color(i=2, j=6,  color = "darkgreen", part = "body") %>% 
-  bold(i=2, j=6,   part = "body") %>% 
-  fontsize(i=2, j=6,size = 10,part = "body") 
+  bold(i=4, part = "body") %>% 
+  color(i=4, color = "red", part = "body") %>% 
+  fontsize(i=4, size = 10,part = "body") %>%
+  color( i=1,  color = "darkgreen", part = "body") %>% 
+  bold(i=1,   part = "body") %>% 
+  fontsize(i=1,size = 10,part = "body") %>% 
+  add_header_row(values = "SP Impute statistics",colwidths = 5)
+
+sp_impute_table
+
+# write_rds(sp_impute_table, "../data/sp_impute_table.rds")
   
 ```
 
+wej select bag for SP
+
 ```{r}
-summary(for_input)
+#| label: cali_plot
+
+
+cal_imp_plot <- 
+  all_imputed %>%
+  filter(data == "CALI",
+         imp %in% c("bag", "knn","orig", "mean")) %>% 
+  ggplot(aes(value, color=imp))+
+  geom_density()+
+  facet_wrap(vars(data), scales = "free",nrow = 2)+
+  theme_bw()
+
+cal_imp_plot
+
+# write_rds(cal_imp_plot, "../data/cal_imp_plot.rds")
+```
+
+```{r}
+#| label: cali_table
+
+
+cal_impute_table <- 
+all_imputed %>% filter(data == "CALI", imp %in% c("bag", "knn", "orig", "mean")) %>% 
+  group_by(imp) %>% 
+  summarise(mean     = round(mean(value, na.rm=TRUE),2),
+            # median   = round(median(value, na.rm = TRUE),1),
+            sd       = round(sd(value, na.rm = TRUE),2),
+            kurtosis = round(kurtosis(value, na.rm = TRUE),2),
+             bias =     round(skewness(value, na.rm = TRUE),2 )
+            ) %>% 
+  flextable() %>% 
+  fontsize(size = 8,part = "all") %>% 
+  bold(part = "header") %>% 
+  bold(i=4, part = "body") %>% 
+  color(i=4, color = "red", part = "body") %>% 
+  fontsize(i=4, size = 10,part = "body") %>%
+  color( i=2,  color = "darkgreen", part = "body") %>% 
+  bold(i=2,   part = "body") %>% 
+  fontsize(i=2,size = 10,part = "body") %>% 
+  add_header_row(values = "CALI Impute statistics",colwidths = 5)
+
+cal_impute_table
+
+write_rds(cal_impute_table, "../data/cal_impute_table.rds")
+```
+
+we selected the knn
+
+```{r}
+#| label: rdep_plot
+
+
+rdep_imp_plot <- 
+  all_imputed %>%
+  filter(data == "RDEP",
+         imp %in% c("bag", "knn","orig", "mean")) %>% 
+  ggplot(aes(value, color=imp))+
+  geom_density()+
+  facet_wrap(vars(data), scales = "free",nrow = 2)+
+  theme_bw()+
+  scale_x_log10()
+
+rdep_imp_plot
+
+write_rds(rdep_imp_plot, "../data/rdep_imp_plot.rds")
+```
+
+```{r}
+#| label: rdep_table
+
+
+rdep_impute_table <- 
+all_imputed %>% filter(data == "RDEP", imp %in% c("bag", "knn", "orig", "mean")) %>% 
+  group_by(imp) %>% 
+  summarise(mean     = round(mean(value, na.rm=TRUE),2),
+            # median   = round(median(value, na.rm = TRUE),1),
+            sd       = round(sd(value, na.rm = TRUE),2),
+            kurtosis = round(kurtosis(value, na.rm = TRUE),2),
+             bias =     round(skewness(value, na.rm = TRUE),2 )
+            ) %>% 
+  flextable() %>% 
+  fontsize(size = 8,part = "all") %>% 
+  bold(part = "header") %>% 
+  bold(i=4, part = "body") %>% 
+  color(i=4, color = "red", part = "body") %>% 
+  fontsize(i=4, size = 10,part = "body") %>%
+  color( i=2,  color = "darkgreen", part = "body") %>% 
+  bold(i=2,   part = "body") %>% 
+  fontsize(i=2,size = 10,part = "body") %>% 
+  add_header_row(values = "RDEP Impute statistics",colwidths = 5)
+
+rdep_impute_table
+
+write_rds(rdep_impute_table, "../data/rdep_impute_table.rds")
+```
+
+now
+
+```{r}
+#| label: rsha_plot
+
+
+rsha_imp_plot <- 
+  all_imputed %>%
+  filter(data == "RSHA",
+         imp %in% c("bag", "knn","orig", "mean")) %>% 
+  ggplot(aes(value, color=imp))+
+  geom_density()+
+  facet_wrap(vars(data), scales = "free",nrow = 2)+
+  theme_bw()+
+  scale_x_log10()
+
+rsha_imp_plot
+
+# write_rds(rsha_imp_plot, "../data/rsha_imp_plot.rds")
+```
+
+```{r}
+#| label: rsha_table
+#| echo: false
+
+
+rsha_impute_table <-
+all_imputed %>% filter(data == "RSHA", imp %in% c("bag", "knn", "orig", "mean")) %>%
+  group_by(imp) %>%
+  summarise(mean     = round(mean(value, na.rm=TRUE),2),
+            # median   = round(median(value, na.rm = TRUE),1),
+            sd       = round(sd(value, na.rm = TRUE),2),
+            kurtosis = round(kurtosis(value, na.rm = TRUE),2),
+             bias =     round(skewness(value, na.rm = TRUE),2 )
+            ) %>%
+  flextable() %>%
+  fontsize(size = 8,part = "all") %>%
+  bold(part = "header") %>%
+  bold(i=4, part = "body") %>%
+  color(i=4, color = "red", part = "body") %>%
+  fontsize(i=4, size = 10,part = "body") %>%
+  color( i=2,  color = "darkgreen", part = "body") %>%
+  bold(i=2,   part = "body") %>%
+  fontsize(i=2,size = 10,part = "body") %>%
+  add_header_row(values = "RSHA Impute statistics",colwidths = 5)
+
+rsha_impute_table
+
+write_rds(rsha_impute_table, "../data/rsha_impute_table.rds")
+```
+
+now the RMED
+
+```{r}
+#| label: rmed_plot
+#| echo: false
+
+
+rmed_imp_plot <- 
+  all_imputed %>%
+  filter(data == "RMED",
+         imp %in% c("bag", "knn","orig", "mean")) %>% 
+  ggplot(aes(value, color=imp))+
+  geom_density()+
+  facet_wrap(vars(data), scales = "free",nrow = 2)+
+  theme_bw()+
+  scale_x_log10()
+
+rmed_imp_plot
+
+# write_rds(rmed_imp_plot, "../data/rmed_imp_plot.rds")
+```
+
+```{r}
+#| label: rmed_table
+#| echo: false
+
+
+rmed_impute_table <-
+all_imputed %>% filter(data == "RMED", imp %in% c("bag", "knn", "orig", "mean")) %>%
+  group_by(imp) %>%
+  summarise(mean     = round(mean(value, na.rm=TRUE),2),
+            # median   = round(median(value, na.rm = TRUE),1),
+            sd       = round(sd(value, na.rm = TRUE),2),
+            kurtosis = round(kurtosis(value, na.rm = TRUE),2),
+             bias =     round(skewness(value, na.rm = TRUE),2 )
+            ) %>%
+  flextable() %>%
+  fontsize(size = 8,part = "all") %>%
+  bold(part = "header") %>%
+  bold(i=4, part = "body") %>%
+  color(i=4, color = "red", part = "body") %>%
+  fontsize(i=4, size = 10,part = "body") %>%
+  color( i=1,  color = "darkgreen", part = "body") %>%
+  bold(i=1,   part = "body") %>%
+  fontsize(i=1,size = 10,part = "body") %>%
+  add_header_row(values = "RMED Impute statistics",colwidths = 5)
+
+rmed_impute_table
+
+# write_rds(rmed_impute_table, "../data/rmed_impute_table.rds")
+```
+
+```{r}
+#| label: dtc_plot
+#| echo: false
+
+
+dtc_imp_plot <- 
+  all_imputed %>%
+  filter(data == "DTC",
+         imp %in% c("bag", "knn","orig", "mean")) %>% 
+  ggplot(aes(value, color=imp))+
+  geom_density()+
+  facet_wrap(vars(data), scales = "free",nrow = 2)+
+  theme_bw()+
+  scale_x_log10()
+
+dtc_imp_plot
+
+# write_rds(dtc_imp_plot, "../data/dtc_imp_plot.rds")
+```
+
+```{r}
+#| label: dtc_table
+#| echo: false
+
+
+dtc_impute_table <-
+all_imputed %>% filter(data == "DTC", imp %in% c("bag", "knn", "orig", "mean")) %>%
+  group_by(imp) %>%
+  summarise(mean     = round(mean(value, na.rm=TRUE),2),
+            # median   = round(median(value, na.rm = TRUE),1),
+            sd       = round(sd(value, na.rm = TRUE),2),
+            kurtosis = round(kurtosis(value, na.rm = TRUE),2),
+             bias =     round(skewness(value, na.rm = TRUE),2 )
+            ) %>%
+  flextable() %>%
+  fontsize(size = 8,part = "all") %>%
+  bold(part = "header") %>%
+  bold(i=4, part = "body") %>%
+  color(i=4, color = "red", part = "body") %>%
+  fontsize(i=4, size = 10,part = "body") %>%
+  color( i=2,  color = "darkgreen", part = "body") %>%
+  bold(i=2,   part = "body") %>%
+  fontsize(i=2,size = 10,part = "body") %>%
+  add_header_row(values = "DTC Impute statistics",colwidths = 5)
+
+dtc_impute_table
+
+write_rds(dtc_impute_table, "../data/dtc_impute_table.rds")
+
+```
+
+```{r}
+#| label: nphi_plot
+#| echo: false
+
+
+nphi_imp_plot <- 
+  all_imputed %>%
+  filter(data == "NPHI",
+         imp %in% c("bag", "knn","orig", "mean")) %>% 
+  ggplot(aes(value, color=imp))+
+  geom_density()+
+  facet_wrap(vars(data), scales = "free",nrow = 2)+
+  theme_bw()+
+  scale_x_log10()
+
+nphi_imp_plot
+
+# write_rds(nphi_imp_plot, "../data/nphi_imp_plot.rds")
+```
+
+```{r}
+#| label: nphi_table
+#| echo: false
+
+
+nphi_impute_table <-
+all_imputed %>% filter(data == "NPHI", imp %in% c("bag", "knn", "orig", "mean")) %>%
+  group_by(imp) %>%
+  summarise(mean     = round(mean(value, na.rm=TRUE),2),
+            # median   = round(median(value, na.rm = TRUE),1),
+            sd       = round(sd(value, na.rm = TRUE),2),
+            kurtosis = round(kurtosis(value, na.rm = TRUE),2),
+             bias =     round(skewness(value, na.rm = TRUE),2 )
+            ) %>%
+  flextable() %>%
+  fontsize(size = 8,part = "all") %>%
+  bold(part = "header") %>%
+  bold(i=4, part = "body") %>%
+  color(i=4, color = "red", part = "body") %>%
+  fontsize(i=4, size = 10,part = "body") %>%
+  color( i=2,  color = "darkgreen", part = "body") %>%
+  bold(i=2,   part = "body") %>%
+  fontsize(i=2,size = 10,part = "body") %>%
+  add_header_row(values = "NPHI Impute statistics",colwidths = 5)
+
+nphi_impute_table
+
+# write_rds(nphi_impute_table, "../data/nphi_impute_table.rds")
+```
+
+Imputaciones utilizadas
+
+```{r}
+#| label: imputaciones_table
+#| echo: false
+
+imput_algo <- tibble(Curva = c("CALI", "RDEP", "RSHA", "RMED", "SP", "DTC", "NPHI", "DRHO", "rhob_clean", "pef_clean" ),
+                     imput = c("knn",   "knn", "knn",  "bag",  "bag", "knn", "knn", "mean", "knn",         "bag"  )) %>% 
+  
+
 ```
