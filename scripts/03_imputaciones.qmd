@@ -27,7 +27,7 @@ list_logs_to_impute <- tibble(Variable_Name = c("CALI","RDEP", "RSHA", "RMED", "
 
 ### Metodos de imputacion
 
-Considerando que los pozos son practicamente verticales y los valores nulos para las coordenadas x,y. z vamos a utilizar una estrategia diferente
+Considerando que los pozos son prácticamente verticales y los valores nulos para las coordenadas x,y. z vamos a utilizar una estrategia diferente
 
 x y el valor de la ultima coordenada
 
@@ -63,8 +63,6 @@ temp<- for_input %>%
          ) %>% 
   ungroup()
 
-
-
 temp %>% 
   ggplot(aes(y_loc, DEPT))+
   geom_path(size = 2)+
@@ -99,6 +97,33 @@ coord_y_imput_plot
 ```
 
 ```{r}
+#| label: fig-coord_y_example
+#| echo: false
+#| include: false
+#| fig-width: 8
+#| fig-height: 8
+#| warning: false
+
+
+coord_y_example <-
+  temp %>%filter(well%in% "33/9-17") %>% 
+  ggplot(aes(y_loc, DEPT)) +
+  geom_path(size = 2) +
+  geom_path(data = for_input %>% filter(well%in% "33/9-17"),
+            aes(y_loc, DEPT),
+            color = "yellow",
+            size = 0.7) +
+  facet_wrap(vars(well), scales = "free") +
+  scale_y_reverse()+
+  scale_x_continuous(limits = c(6814125,6814225 ))+
+  theme_minimal()
+
+coord_y_example
+
+# write_rds(coord_y_example, "../data/coord_y_example.rds")
+```
+
+```{r}
 #| label: coord_x_plot
 #| echo: false
 #| include: false
@@ -121,6 +146,33 @@ coord_x_imput_plot <-
 coord_x_imput_plot
 
 # write_rds(coord_x_imput_plot, "../data/coord_x_imput.rds")
+```
+
+```{r}
+#| label: fig-un_pozox
+#| echo: false
+#| include: false
+#| fig-width: 8
+#| fig-height: 8
+#| warning: false
+
+
+coord_x_example <-
+  temp %>%filter(well%in% "33/9-17") %>% 
+  ggplot(aes(x_loc, DEPT)) +
+  geom_path(size = 2) +
+  geom_path(data = for_input %>% filter(well%in% "33/9-17"),
+            aes(x_loc, DEPT),
+            color = "yellow",
+            size = 0.7) +
+  facet_wrap(vars(well), scales = "free") +
+  scale_y_reverse()+
+  scale_x_continuous(limits = c(438400,438500 ))+
+  theme_minimal()
+
+coord_x_example
+
+# write_rds(coord_x_example, "../data/coord_x_example.rds")
 ```
 
 ```{r}
@@ -151,21 +203,53 @@ coord_z_imput_plot
 ```
 
 ```{r}
+#| label: coord_z_example
+#| echo: false
+#| include: false
+#| fig-width: 8
+#| fig-height: 8
+#| warning: false
+
+coord_z_example <-
+  temp %>% filter(well%in% "33/9-17") %>% 
+  ggplot(aes(-z_loc, DEPT)) +
+  geom_path(size = 2) +
+  geom_path(
+    data = for_input %>% filter(well%in% "33/9-17") ,
+    aes(-z_loc, DEPT),
+    color = "yellow",
+    size = 0.7
+  ) +
+  facet_wrap(vars(well), scales = "free") +
+  scale_y_reverse()+
+  theme_minimal()+
+  labs(x= "z_loc")
+
+coord_z_example
+
+# write_rds(coord_z_example, "../data/coord_z_example.rds")
+```
+
+```{r}
 #| label: imputacion
 #| echo: false
 #| include: false
 
-no_model_data <- temp %>% select(well, fm, brent, lith_name, FORCE_2020_LITHOFACIES_LITHOLOGY, bad_data, x_loc, y_loc, z_loc)
 
-imput_rec <- recipe(DEPT ~ . , data = temp %>% select(-c(well, fm, brent, lith_name, FORCE_2020_LITHOFACIES_LITHOLOGY, bad_data, x_loc, y_loc,z_loc, x, y, depth_step, count)) )
+for_input <-temp %>% select(-c("x", "y", "depth_step", "count"))
+
+no_model_data <- for_input %>% select(well, fm, brent, lith_name, FORCE_2020_LITHOFACIES_LITHOLOGY, bad_data, x_loc, y_loc, z_loc)
+
+imput_rec <- recipe(DEPT ~ . , data = for_input %>% 
+                      select(-c(well, fm, brent, lith_name, FORCE_2020_LITHOFACIES_LITHOLOGY, bad_data, x_loc, y_loc,z_loc)) )
 
 imputed_knn <-
   imput_rec %>%
   step_impute_knn( all_predictors(),
                   # columns = "Cholesterol"
                   ) %>%
-  prep(temp) %>%
-  bake(temp) %>%
+  prep(for_input) %>%
+  bake(for_input) %>%
   cbind(no_model_data)
 
 imputed_bag <-
@@ -173,8 +257,8 @@ imputed_bag <-
   step_impute_bag(all_predictors(),
                   # columns = "Cholesterol"
                   ) %>%
-  prep(temp) %>%
-  bake(temp) %>% cbind(no_model_data)
+  prep(for_input) %>%
+  bake(for_input) %>% cbind(no_model_data)
 
 imputed_lin <-
   imput_rec %>%
@@ -182,24 +266,24 @@ imputed_lin <-
                      impute_with = imp_vars(DEPT)
                   # columns = "Cholesterol"
                   ) %>%
-  prep(temp) %>%
-  bake(temp) %>%  cbind(no_model_data)
+  prep(for_input) %>%
+  bake(for_input) %>%  cbind(no_model_data)
 
 imputed_mean <-
   imput_rec %>%
   step_impute_mean(list_logs_to_impute$Variable_Name
                   # columns = "Cholesterol"
                   ) %>%
-  prep(temp) %>%
-  bake(temp) %>%  cbind(no_model_data)
+  prep(for_input) %>%
+  bake(for_input) %>%  cbind(no_model_data)
 
 imputed_median <-
   imput_rec %>%
   step_impute_median(list_logs_to_impute$Variable_Name
                   # columns = "Cholesterol"
                   ) %>%
-  prep(temp) %>%
-  bake(temp) %>%
+  prep(for_input) %>%
+  bake(for_input) %>%
   cbind(no_model_data)
 # 
 # 
@@ -366,9 +450,9 @@ all_imputed %>% filter(data == "DRHO", imp %in% c("bag", "knn", "orig", "mean"))
   bold(i=4, part = "body") %>% 
   color(i=4, color = "red", part = "body") %>% 
   fontsize(i=4, size = 10,part = "body") %>%
-  color( i=3,  color = "darkgreen", part = "body") %>% 
-  bold(i=3,   part = "body") %>% 
-  fontsize(i=3,size = 10,part = "body") %>% 
+  color( i=1,  color = "darkgreen", part = "body") %>% 
+  bold(i=1,   part = "body") %>% 
+  fontsize(i=1,size = 10,part = "body") %>% 
   add_header_row(values = "DRHO Impute statistics",colwidths = 5)
 
 drho_impute_table
@@ -484,7 +568,7 @@ sp_impute_table
   
 ```
 
-wej select bag for SP
+### CALI
 
 ```{r}
 #| label: cali_plot
@@ -552,7 +636,7 @@ rdep_imp_plot <-
 
 rdep_imp_plot
 
-write_rds(rdep_imp_plot, "../data/rdep_imp_plot.rds")
+# write_rds(rdep_imp_plot, "../data/rdep_imp_plot.rds")
 ```
 
 ```{r}
@@ -581,7 +665,7 @@ all_imputed %>% filter(data == "RDEP", imp %in% c("bag", "knn", "orig", "mean"))
 
 rdep_impute_table
 
-write_rds(rdep_impute_table, "../data/rdep_impute_table.rds")
+# write_rds(rdep_impute_table, "../data/rdep_impute_table.rds")
 ```
 
 now
@@ -632,7 +716,7 @@ all_imputed %>% filter(data == "RSHA", imp %in% c("bag", "knn", "orig", "mean"))
 
 rsha_impute_table
 
-write_rds(rsha_impute_table, "../data/rsha_impute_table.rds")
+# write_rds(rsha_impute_table, "../data/rsha_impute_table.rds")
 ```
 
 now the RMED
@@ -734,7 +818,7 @@ all_imputed %>% filter(data == "DTC", imp %in% c("bag", "knn", "orig", "mean")) 
 
 dtc_impute_table
 
-write_rds(dtc_impute_table, "../data/dtc_impute_table.rds")
+# write_rds(dtc_impute_table, "../data/dtc_impute_table.rds")
 
 ```
 
@@ -847,7 +931,7 @@ gr_impute_table
 #| echo: false
 
 imput_algo <- tibble(Curva = c("CALI", "RDEP", "RSHA", "RMED", "SP", "DTC", "NPHI", "DRHO", "rhob_clean", "pef_clean" , "GR"),
-                     imput = c("knn",   "knn", "knn",  "bag",  "bag", "knn", "knn", "mean", "knn",         "bag"  , "mean")) 
+                     imput = c("knn",   "knn", "knn",  "bag",  "bag", "knn", "knn", "bag", "knn",         "bag"  , "mean")) 
 
 # write_rds(imput_algo, "../data/imput_algo.rds")
   
@@ -858,5 +942,14 @@ Visualización de las imputaciones
 
 ```{r}
 
-  
+imputed_data <-
+  imputed_bag %>% 
+  select(well, DEPT, x_loc, y_loc, z_loc, RMED, SP, DRHO, pef_clean, FORCE_2020_LITHOFACIES_LITHOLOGY,bit_size,lith_name, fm) %>%
+  cbind(imputed_mean %>%
+          select(GR)) %>%
+  cbind(imputed_knn %>%
+          select(CALI, RDEP, RSHA, DTC, NPHI, rhob_clean))
+
+# write_rds(imputed_data, "../data/imputed_data.rds")
+
 ```
