@@ -56,6 +56,8 @@ Estas son algunas de las consideraciones principales que limitan nuestro estudio
 #| warning: false
 
 library(readr)
+library(patchwork)
+library(ggeasy)
 library(SmartEDA)
 library(flextable)
 library(tidyverse)
@@ -133,9 +135,9 @@ Los datos que utilizaremos son datos públicos del Mar del Norte, para facilitar
 Tenemos a disposición un total de `r length(unique(logs_force2020$well))` pozos en la base de datos del concurso, sin embargo estamos solo interesados en pozos que han atravesado la formación Brent. en la @fig-mapatodoslosdatos podemos observar que solo los pozos localizados al norte del área llegan a la formación Brent. Es muy probable que sea debido a una erosión, pero la razón de esta división no es parte del análisis de este estudio.
 
 ```{r}
-#| fig-height: 8
+#| fig-height: 9
 #| label: fig-mapatodoslosdatos
-#| fig-width: 8
+#| fig-width: 9
 #| echo: false
 #| warning: false
 #| message: false
@@ -209,7 +211,7 @@ En el mapa confirmamos que tenemos `r length(unique(coord_brent_wells$well))`poz
 
 Nosotros vamos a tomar la clasificación publicada por [Norwegian Petroleum Directorate](https://factpages.npd.no/en/wellbore/pageview/exploration/all) (NPD) como correcta y vamos a generar un modelo que nos permita predecir los tipos de roca en los pozos que no tienen núcleo.
 
-En los siguientes puntos vamos a describir las condiciones de borde, ya que el objetivo es describir un problema que normalmente se resuelve de manera deterministica y lenta, y la introducción de tecnicas de machine learning nos permite acceder a soluciones que aumentan nuestra productividad y calidad de las predicciones.
+En los siguientes puntos vamos a describir las condiciones de borde, ya que el objetivo es describir un problema que normalmente se resuelve de manera determinista y lenta, y la introducción de técnicas de machine learning nos permite acceder a soluciones que aumentan nuestra productividad y calidad de las predicciones.
 
 -   Estamos interesados en rocas de la formación Brent, los procesos geológicos que generan las distintas formaciones son independientes, no solo por los tipos de roca sino por los minerales que existieron en cada época. Estas variaciones implican que para este tipo de estudios utilizar información de otras formaciones mas someras o profundas puede generar problema Sto arrivando! los modelos predictivos.
 
@@ -221,10 +223,12 @@ Tendremos una ventaja para evaluar nuestros resultados ya que en el set de datos
 
 ### Visualización de los datos disponibles
 
+Una de las particularidades que tenemos en este tipo de problemas es la cantidad de datos disponibles. Por lo que es importante saber que medidas tenemos a disposición en los pozos en los que vamos a realizar las predicciones. Ya mencionamos que los pozos con núcleos son pozos en los que normalmente se realizan mucha mas mediciones que en el resto de pozos, por lo que es importante establecer la linea base de los datos disponibles.
+
 Empezamos por revisar los datos disponible, tomando de la descripción del concurso vemos en la siguiente tabla la descripción de cada medida
 
 | Registro                          | Descripción                                            |
-|-----------------------------------|--------------------------------------------------------|
+|----------------------------|--------------------------------------------|
 | well                              | Nombre del pozo                                        |
 | FORCE_2020_LITHOFACIES_LITHOLOGY  | tipos de roca interpretados                            |
 | FORCE_2020_LITHOFACIES_CONFIDENCE | Medida de calidad de la interpretación de tipo de roca |
@@ -328,7 +332,7 @@ Es claro que tenemos una gran cantidad de variable con menos de 50% de valores n
 #| message: false
 #| warning: false
 #| echo: false
-#| label: tabla_df_detalle
+#| label: tbl-tabla_df_detalle
 #| tbl-cap: "Descripción de las 30 variables disponibles para el estudio"
 
 
@@ -544,7 +548,7 @@ Una vez hecha la limpieza nos falta una buena cantidad de registros, veremos que
 #### **Estadisticas Univariadas**
 
 ```{r}
-#| label: univ_stats
+#| label: tbl-univ_stats
 #| message: false
 #| warning: false
 #| echo: false
@@ -566,6 +570,103 @@ ExpNumStat(brent_qc3,Qnt = c(0.25,0.75), Outlier = TRUE) %>%
   
 ```
 
-Al observar las estadísticas no vemos a simple vista ningun problema salvo la necesidad inicial de realizar imputaciones para decidir qeu curvas vamos a utilizar
+Al observar las estadísticas no vemos a simple vista ningun problema salvo la necesidad inicial de realizar imputaciones para decidir que curvas vamos a utilizar
+
+### Imputaciones
+
+Para imputar los valores nulos vamos a tomar varias estrategias diferentes, en especial consideraremos las coordenadas geograficas de manera distinta que el resto de las medidas.
+
+#### Imputación de coordenadas:
+
+Las coordenadas de superficie, en este caso **x_loc,** **y_loc y z_loc** tienen algunas medidas faltantes. En este caso ( y es común en la industria) son las mismas en los tres casos, esto sucede porque los sensores que determinan las coordenadas se encuentran detrás de la broca a cierta distancia y no siempre nos llega el resultado final con la estimación total de estas coordenadas. En este caso usamos la siguiente estrategia:
+
+-   Coordenadas horizontales ( "**x_loc**" y "**y_loc**") asignamos el valor mas profundo registrado a las muestras con valores nulos. Considerando que todos los pozos son relativamente verticales y mas aún dentro de la formación de interés, esta es una buena aproximación como vemos en la @fig-coord_imput .
+
+-   Coordenada de profundidad ("**z_loc**"), en este caso asumimos que el pozo constinua descendiendo a la misma velocidad que lo ha hecho antes, por lo que calculamos el intervalo de "muestreo" promedio en cada pozo ( cercano a los 15 cm), y continuamos extrapolando hacia abajo con este intervalo. (ver @fig-coord_imput )
+
+```{r}
+#| label: fig-coord_imput
+#| echo: false
+#| fig-width: 10
+#| fig-height: 5
+#| warning: false
+#| message: false
+#| fig-cap: "Ejemplo de la imputación de coordenadas en el pozo 33/9-17, en amarillo las coordenadas originales y en negro el resultado de la imputación."
+
+coord_x_example <- read_rds("../data/coord_x_example.rds")
+coord_y_example <- read_rds("../data/coord_y_example.rds")
+coord_z_example <- read_rds("../data/coord_z_example.rds")
+
+coord_x_example + coord_y_example+ coord_z_example
+
+```
+
+#### Imputación de medidas en los pozos
+
+Para realizar estas imputaciones hemos realizado pruebas utilizando distintos métodos, al final la selección ha sido el resultado de la comparativa visual de las distribuciones que podemos ver en @fig-all_imput_plot y las estadísticas de cada método.
+
+```{r}
+#| label: fig-all_imput_plot
+#| echo: false
+#| fig-width: 8
+#| fig-height: 5
+#| warning: false
+#| message: false
+#| fig-cap: "Distintos métodos de imputación utilizados en cada medida, los gráficos permiten tener una idea de la cercania de cada método a la distribución original"
+
+all_imputed <- read_rds("../data/all_imputed.rds")
+
+all_imputed %>%
+  filter(imp %in% c("bag", "knn", "mean", "orig")) %>% 
+  ggplot(aes(value, color=imp))+
+  geom_density()+
+  facet_wrap(vars(data), scales = "free",nrow = 2)+
+  theme_minimal()+
+  theme(axis.title = element_blank())
+```
+
+En cada caso analizamos en detalle cada gráfico con las estadísticas obtenidas como el ejemplo en @tbl-ejemplo_imput en el que seleccionamos la **media** como método de imputación.
+
+```{r}
+#| label: tbl-ejemplo_imput
+#| echo: false
+#| fig-width: 8
+#| fig-height: 5
+#| warning: false
+#| message: false
+#| tbl-cap: "Estadísticas de las distribuciones obtenidas con los distintos métodos evaluados, en rojo se presentan las estadísticas originales, y en verde el método seleccionado en el caso de la desviación de la dinsidad."
+
+drho_impute_table <- read_rds("../data/drho_impute_table.rds")
+drho_impute_table
+
+
+
+```
+
+En la @tbl-algo_imput presentamos los distintos métodos de imputación seleccionados para cada curva:
+
+```{r}
+#| label: tbl-algo_imput
+#| echo: false
+#| fig-width: 8
+#| fig-height: 5
+#| warning: false
+#| message: false
+#| tbl-cap: "Estadísticas de las distribuciones obtenidas con los distintos métodos evaluados, en rojo se presentan las estadísticas originales, y en verde el método seleccionado en el caso de la desviación de la dinsidad."
+
+imput_algo <- read_rds("../data/imput_algo.rds")
+
+
+imput_algo %>%
+  rename(Algoritmo = "imput") %>%
+  flextable() %>%
+  autofit() %>%
+  fontsize(size = 8, part = "all") %>%
+  bold(bold = TRUE, part = "header") %>%
+  theme_alafoli()
+
+```
+
+Visualizacion de los datos para el modelo predictivo
 
 ## References
