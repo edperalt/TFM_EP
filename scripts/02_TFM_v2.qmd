@@ -75,8 +75,8 @@ library(tidyverse)
 
 # source("00_carga de_datos.R")
 
-logs <- read_rds("../data/logs_force2020.RDS") %>% 
-  select(-c(del, FORCE_2020_LITHOFACIES_CONFIDENCE))
+ logs <- read_rds("../data/logs_force2020.RDS") #%>% 
+#   select(-c(del, FORCE_2020_LITHOFACIES_CONFIDENCE))
 
 
 ```
@@ -88,7 +88,7 @@ De la página del concurso tomaremos los datos de los pozos ( un total de `r uni
 la siguiente tabla muestra las columnas que mantenemos del dataset original:
 
 | Registro                         | Descripción                                 |
-|----------------------------------|---------------------------------------------|
+|-------------------------------|-----------------------------------------|
 | well                             | Nombre del pozo                             |
 | FORCE_2020_LITHOFACIES_LITHOLOGY | tipos de roca interpretados                 |
 | RDEP                             | Medida profunda de resistividad             |

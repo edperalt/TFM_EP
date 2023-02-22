@@ -1,6 +1,6 @@
 # Carga de los LAS
-
-
+library(readxl)
+library(readr)
 library(petroreadr)
 library(tidyverse)
 
@@ -47,6 +47,7 @@ coord_all_wells <-
   ungroup()
 
 write_rds(coord_all_wells, "data/coord_all_wells.rds")
+# coord_all_wells<- read_rds("data/coord_all_wells.rds")
 
 ##### tope de las formaciones tomadas de NPD. ##### 
 
@@ -122,7 +123,7 @@ brent_cored <- core_data %>%
   rename(top = `Core sample - top depth`,
          base = `Core sample -  bottom depth`)
 
-temp <- logs_brent %>% mutate(core=1)
+temp <- logs_brent %>% mutate(core=FALSE)
 
 for (i in 1:nrow(brent_cored)) {
   the_well  <- brent_cored[[i,"well"]]
@@ -130,7 +131,7 @@ for (i in 1:nrow(brent_cored)) {
   base_core <- brent_cored[[i,"base"]]
   
   temp <- temp %>% 
-    mutate(core = ifelse(DEPT >= top_core & DEPT <=base_core, TRUE,FALSE )
+    mutate(core = ifelse(DEPT >= top_core & DEPT <=base_core & well == the_well, TRUE,core )
     )
 }
 
@@ -141,4 +142,136 @@ final_logs %>% mutate(core_brent = ifelse(core == TRUE & brent == TRUE, TRUE, FA
   filter(core_brent == TRUE) %>% pull(well) %>% unique() %>% length()
 , " wells with core from the BRENT formation "))
 
+# salvamos el dataframe con los registros y la columna que indica cuando hay core en el Brent
+
+final_logs<- final_logs %>% 
+  rename(core_all = core) %>% 
+  mutate(core = ifelse(brent == T & core_all== T, T, F))
+
 saveRDS(final_logs, "data/logs_core_rds.rds")
+
+final_logs<- read_rds("data/logs_core_rds.rds")
+# lista de pozos con nucleos
+
+
+cored_brent_wells <-
+  final_logs %>% mutate(core_brent = ifelse(core == TRUE &
+                                              brent == TRUE, TRUE, FALSE)) %>%
+  filter(core_brent == TRUE) %>% pull(well) %>% unique()
+
+write_rds(cored_brent_wells, "data/cored_brent_wells.rds")
+
+well_names <- unique(final_logs$well)
+
+well_names <- final_logs %>% 
+  group_by(well) %>% 
+  filter(brent ==TRUE) %>% 
+  summarise(top = min(-z_loc, na.rm = TRUE)) %>% 
+  arrange(top) %>% pull(well)   # select wells organized by depth 
+
+los_pozos <- tibble(well = well_names,
+                    well_id = seq(1, length(well_names)))
+
+
+final_logs <- final_logs %>% 
+  left_join(los_pozos, by= "well") %>% 
+  group_by(well) %>% 
+  arrange(DEPT) %>% 
+  ungroup()
+
+seabed <- final_logs %>% 
+  group_by(well) %>% 
+  summarise(surface = min(DEPT, na.rm = TRUE)) %>% 
+  left_join(los_pozos, by= "well")
+
+well_top_base_md <- final_logs %>% 
+  group_by(well) %>% 
+  summarise(top_md = min(DEPT,na.rm = TRUE),
+            td_md = max(DEPT, na.rm = TRUE),
+            # top_ss = max(z_loc, na.rm = TRUE),
+            # td_ss = min(z_loc, na.rm = TRUE)
+  ) %>% 
+  left_join(los_pozos, by= "well") %>% 
+  pivot_longer(-c(well, well_id)) %>% 
+  group_by(well) %>% 
+  arrange(value) %>% 
+  ungroup()
+
+top_brent_md <- final_logs %>%
+  filter(brent== TRUE) %>% 
+  group_by(well) %>% 
+  summarise(top_brent = min(DEPT, na.rm = TRUE )) %>% 
+  left_join(los_pozos, by= "well") %>% 
+  arrange(top_brent) %>% 
+  ungroup()
+
+base_brent_md <- final_logs %>%
+  filter(brent== TRUE) %>% 
+  group_by(well) %>% 
+  summarise(bas_brent = max(DEPT, na.rm = TRUE )) %>% 
+  left_join(los_pozos, by= "well")  %>% 
+  arrange(bas_brent) %>% 
+  ungroup()
+
+label_pos <- tibble(well = well_names,
+                    pos = c(rep(c(1000,1300,1500, 1700,1900),7),1000, 1300)) %>% 
+  left_join(los_pozos, by="well")
+
+write_rds(label_pos, "../data/label_pos.rds")
+
+well_top_base_ss <- final_logs %>% 
+  group_by(well) %>% 
+  summarise(top_ss = max(z_loc, na.rm = TRUE),
+            td_ss = min(z_loc, na.rm = TRUE)
+  ) %>% 
+  left_join(los_pozos, by= "well") %>% 
+  pivot_longer(-c(well, well_id)) %>% 
+  group_by(well) %>% 
+  arrange(value) %>% 
+  ungroup()
+
+write_rds(well_top_base_ss, "../data/well_top_base_ss.rds") 
+
+top_brent_ss <- final_logs %>%
+  filter(brent== TRUE) %>% 
+  group_by(well) %>% 
+  filter(z_loc == max(z_loc, na.rm = TRUE)) %>%
+  select(well, z_loc, x_loc, y_loc) %>% 
+  left_join(los_pozos, by= "well") %>% 
+  arrange(desc(z_loc)) %>% 
+  ungroup() 
+
+saveRDS(top_brent_ss, "../data/top_brent_ss.rds")
+
+# top_brent_ss <- final_logs %>%
+#   filter(brent== TRUE) %>% 
+#   group_by(well) %>% 
+#   summarise(top_brent_ss = min(-z_loc, na.rm = TRUE )) %>% 
+#   left_join(los_pozos, by= "well") %>% 
+#   arrange(top_brent_ss) %>% 
+#   ungroup() 
+
+base_brent_ss <- final_logs %>%
+  filter(brent== TRUE) %>% 
+  group_by(well) %>% 
+  summarise(bas_brent_ss = max(-z_loc, na.rm = TRUE )) %>% 
+  left_join(los_pozos, by= "well")  %>% 
+  arrange(bas_brent_ss) %>% 
+  ungroup()
+
+write_rds(base_brent_ss, "data/base_brent_ss.rds")
+
+cored_brent <- final_logs %>% filter(brent == TRUE, 
+                                     core == TRUE) 
+saveRDS(cored_brent, "data/cored_brent.rds")
+
+
+
+
+
+
+
+
+
+
+

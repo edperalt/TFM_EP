@@ -1,0 +1,92 @@
+---
+title: "tendencia con profundidad"
+format: docx
+editor: visual
+---
+
+## Carga de datos
+
+cargamos los datos a los que ya les realizamos la imputación.
+
+```{r}
+#| include: false
+#| label: libraries
+
+library(flextable)
+library(tidyverse)
+
+```
+
+```{r}
+#| include: false
+#| label: data
+
+trend_qc <- read_rds("../data/imputed_data.rds") 
+
+cont_trend <- trend_qc %>% select(where(is.numeric))
+
+
+```
+
+```{r}
+#| label: data_cont
+#| echo: false
+#| warning: false
+#| message: false
+#| fig-width: 8
+#| fig-height: 8
+
+cont_trend %>% 
+  select(-c(bit_size, FORCE_2020_LITHOFACIES_LITHOLOGY, x_loc, y_loc, DEPT)) %>% 
+  mutate(RDEP = log(RDEP + 0.00001),
+         RSHA = log(RSHA + 0.00001),
+         RMED = log(RSHA + 0.00001),
+         ) %>% 
+  pivot_longer(-z_loc) %>% 
+  ggplot(aes( -z_loc, value))+
+  geom_point()+
+  geom_smooth(method = "lm")+
+  facet_wrap(vars(name), scales = "free") +
+  theme_minimal()
+  
+  
+
+```
+
+```{r}
+#| warning: false
+#| message: false
+#| fig-width: 8
+#| fig-height: 8
+GGally::ggpairs(cont_trend %>%
+                  select(-c(bit_size, FORCE_2020_LITHOFACIES_LITHOLOGY, x_loc, y_loc, DEPT)) %>% 
+                  mutate(RDEP = log(RDEP + 0.00001),
+                         RSHA = log(RSHA + 0.00001),
+                         RMED = log(RSHA + 0.00001),
+                         ))
+```
+
+```{r}
+
+
+curvas<- colnames(cont_trend %>% select(where(is.numeric)))
+curvas <- curvas[-which(curvas %in% c("z_loc", "DEPT", "FORCE_2020_LITHOFACIES_LITHOLOGY", "x_loc", "y_loc", "bit_size"))]
+
+
+la_corr <- tibble(Curva = rep("other", length(curvas)),
+                  corr = 0)
+
+for (i in 1:length(curvas)) {
+  la_corr[i,1] <- curvas[i]
+  la_corr[i,2] <- cor(cont_tred$z_loc, cont_tred %>% select(curvas[i]), method = "pearson")
+}
+
+la_corr %>% 
+  mutate(temp = corr**2,
+         corr = round(corr, 2)) %>% 
+  arrange(desc(temp)) %>% 
+  select(-temp) %>% 
+  flextable()
+```
+
+Podemos concluir fon estos bajos valores de correlación que la profundidad va

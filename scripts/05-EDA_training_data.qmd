@@ -1,0 +1,173 @@
+---
+title: "EDA training data"
+format: html
+editor: visual
+---
+
+```{r}
+#| label: librerias
+#| echo: false
+#| message: false
+#| warning: false
+#| 
+library(dlookr)
+library(GGally)
+library(flextable)
+library(tidyverse)
+
+```
+
+```{r}
+#| label: load_data
+#| echo: false
+#| message: false
+#| warning: false
+#| 
+
+xcore <- readRDS("../data/xcore.rds")
+
+```
+
+REvisamos las variables que tenemos disponibles
+
+```{r}
+#| label: tbl-data
+#| echo: false
+#| message: false
+#| warning: false
+
+diagnose(xcore) %>% flextable() %>%
+  autofit() %>%
+  fontsize(size = 8, part = "all") %>%
+  bold(bold = TRUE, part = "header") %>%
+  theme_alafoli()
+
+```
+
+Observamos que la variable **bit_size** tiene solo dos valores, por lo que la transformaremos en factor, asi como las variables tipo carácter también las transformamos a factor. A continuación analizamos las estadísticas de las variables continuas, sin embargo al ser un subset de todo el dataset ya sabemos que no hay problemas.
+
+```{r}
+#| label: data_transform
+#| echo: false
+#| message: false
+#| warning: false
+
+xcore <- xcore %>% 
+  mutate(bit_size = as.factor(bit_size),
+         lith_name = as.factor(lith_name),
+         fm = as.factor(fm)
+         )
+
+```
+
+```{r}
+#| label: tbl-data_continua
+#| echo: false
+#| message: false
+#| warning: false
+#| tbl-cap: "Estadísticas de las variables numéricas de la sección de los pozos con núcleos"
+
+
+xcore %>%
+  diagnose_numeric() %>%
+  flextable() %>%
+  autofit() %>%
+  fontsize(size = 8, part = "all") %>%
+  bold(bold = TRUE, part = "header") %>%
+  theme_alafoli()
+
+```
+
+Observamos los distintos niveles de las variables categóricas.
+
+```{r}
+#| label: tbl-data
+#| echo: false
+#| message: false
+#| warning: false
+#| tbl-cap: "Variables categóricas de los datos en la sección con núcleo"
+
+
+xcore %>%
+  diagnose_category() %>%
+  flextable() %>%
+  autofit() %>%
+  fontsize(size = 8, part = "all") %>%
+  bold(bold = TRUE, part = "header") %>%
+  theme_alafoli()
+
+```
+
+## Analisis de Outliers
+
+Observamos que los
+
+```{r}
+#| label: tbl-outliers
+#| echo: false
+#| message: false
+#| warning: false
+#| tbl-cap: "Variables categóricas de los datos en la sección con núcleo"
+
+xcore %>%
+  diagnose_outlier() %>%
+  flextable() %>%
+  autofit() %>%
+  fontsize(size = 8, part = "all") %>%
+  bold(bold = TRUE, part = "header") %>%
+  theme_alafoli()
+
+```
+
+```{r}
+xcore %>% 
+  group_by(lith_name) %>% 
+  normality() %>% 
+  filter(p_value > 0.05) %>% 
+  flextable()
+```
+
+## Variables continuas vs las variables target ( tipo de roca)
+
+Al analizar @fig-cont_target es calro que las variables relacionadas a la permeabilidad y la resistividad deben ser tratadas en el espacio logaritmico.
+
+```{r}
+#| label: fig-cont_target
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-cap: "Box plot de variables continuas separadas por tipo de roca "
+#| fig-width: 8
+#| fig-height: 8
+
+xcore %>% select(lith_name,where(is.numeric)) %>% 
+  pivot_longer(-lith_name) %>% 
+  ggplot(aes(value))+
+  geom_boxplot(aes(color=lith_name))+
+  facet_wrap(vars(name), scales = "free",ncol = 4)+
+  labs(color = "tipo de roca")+
+  theme_minimal()
+
+  
+  
+```
+
+```{r}
+#| label: fig-cont_target_log
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-cap: "Box plot de variables continuas separadas por tipo de roca "
+#| fig-width: 8
+#| fig-height: 8
+
+xcore %>% select(lith_name,perm, ind_perm, RDEP, RMED, RSHA) %>% 
+  pivot_longer(-lith_name) %>% 
+  ggplot(aes(value+0.0001))+
+  geom_boxplot(aes(color=lith_name))+
+  facet_wrap(vars(name), scales = "free",ncol = 3)+
+  labs(color = "tipo de roca")+
+  scale_x_log10()+
+  theme_minimal()
+
+```

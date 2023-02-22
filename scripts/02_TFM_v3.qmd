@@ -41,7 +41,7 @@ Ya hemos dicho que vamos a utilizar los pozos donde conocemos los tipos de roca 
 
 -   Las medidas aunque muchas veces equivalentes, son en general realizadas por distintos proveedores de servicios, por lo que los resultados varían en precisión. En este caso se trata de una base de datos depurada donde parte de este trabajo se ha realzado
 
--   La falla de herramientas de perforación es bastante comun, por lo que es probable encontrar secciones sin tener información.
+-   La falla de herramientas de perforación es bastante común, por lo que es probable encontrar secciones sin tener información.
 
 -   La producción del campo ( directamente relacionada con las reservas) se ve muy afectada por la presencia de anomalías en las carácterísticas petrofísicas de las rocas, por lo que el detectar correctamente rocas que por definición son outliers ( muy baja proporción) en muchos casos es crítico para el cálculo de reservas. Esto es particularmente importante cuando son rocas de muy alta permeabilidad o muy baja permeabilidad.
 
@@ -94,7 +94,7 @@ base_brent_ss     <-  read_rds("../data/base_brent_ss.rds")         # prof de la
 #| fig-cap: "Pozos disponibles en la base de datos que atraviesan la formación Brent"
 #| cap-location: margin
 
-cored_brent_wells <- unique(cored_brent$well) 
+# cored_brent_wells <- unique(cored_brent$well) 
   
 coord_brent_wells %>% 
   ggplot(aes(sup_x, sup_y))+
@@ -183,7 +183,7 @@ Ya que visualizamos el área en donde podemos encontrar los pozos con la formaci
 #| fig-cap: "Pozos qeu llegan a la formación Brent y pozos que tienen núcleo de la formación Brent"
 #| cap-location: margin
 
-cored_brent_wells <- unique(cored_brent$well) 
+# cored_brent_wells <- unique(cored_brent$well) 
   
 coord_brent_wells %>% 
   ggplot(aes(sup_x, sup_y))+
@@ -272,6 +272,7 @@ A esta lista de columnas con datos le vamos a realizar los siguientes cambios:
 -   Columna a eliminar:
 
     -   **FORCE_2020_LITHOFACIES_CONFIDENCE** es una columna utilizada en el concurso de donde estamos tomando los datos y. no tiene sentido en este estudio, por lo que la vamos a descartar.
+    -   **FORCE_2020_LITHOFACIES_LITHOLOGY** ya que usaremos **litho_name**
 
 En la siguiente gráfica observamos todos los pozos que tenemos a disposición y que sección de cada uno contiene núcleo dentro de la formación Brent.
 
@@ -302,9 +303,7 @@ well_top_base_ss %>%
   theme(legend.position = "none")
 ```
 
-En la @fig-xsection observamos que la media de profundidad de la formación esta cercana a los 3000 metros bajo el nivel del mar, además vemos que los cuatro pozos que tienen núcleos los tienen en una rango de profundidad bastante similar, esto en general será una limitación ya que los cambios de profundidad generalmente producen cambios en la respuesta de las rocas a algunas medidas, tenemos el clásico ejemplo de la compactación, que aumenta con profundidad, por lo que la expectativa de porosidad de una misma. roca es de tener menores valores de porosidad con el aumento. de presión que conlleva el aumento de profundidad, esto es claramente una simplificación de la realidad,pero es un problema al que nos enfrentaremos.
-
-#### Control de calidad inicial
+En la @fig-xsection observamos que la media de profundidad de la formación esta cercana a los 3000 metros bajo el nivel del mar, además vemos que los
 
 Comenzamos el análisis revisando el dataframe que hemos construido, con la librería @SmartEDA
 
@@ -356,15 +355,15 @@ A primera vista podemos identificar lo siguiente:
 
 -   La variable **brent** es un identificador que nos indica que los datos pertenecen al grupo Brent, en este caso como el objetivo de este estudio es analizar solamente muestras de este grupo, esta columna no aporta información y la podemos descartar.
 
--   Las variables que están relacionadas al diametro del pozo, como el **Caliper**, el **DCAL** y el **BS** (tamaño de la broca), las vamos a analizar siguiendo las siguientes premisas
+-   Las variables que están relacionadas al diámetro del pozo, como el **Caliper**, el **DCAL** y el **BS** (tamaño de la broca), las vamos a analizar siguiendo las siguientes premisas
 
-    -   Dentro de la formación **Brent** no deberiamos tener cambios de fase de perforación, lo que indica que la broca utilizada en cada pozo debe ser del mismo diametro. Esto nos permite recuperar una curva que tienen muchos nulos:
+    -   Dentro de la formación **Brent** no deberíamos tener cambios de fase de perforación, lo que indica que la broca utilizada en cada pozo debe ser del mismo diámetro. Esto nos permite recuperar una curva que tienen muchos nulos:
 
-        -   **BS** conociendo los valores de diametro estandar en la industria y revisando las medidas que tenemos crearemos una curva sintética en base al caliper (CAL) que esta en todos los pozos , asignando a cada pozo el tamaño de broca que permite al caliper tener sentido.
+        -   **BS** conociendo los valores de diámetro estándar en la industria y revisando las medidas que tenemos crearemos una curva sintética en base al caliper (CAL) que esta en todos los pozos , asignando a cada pozo el tamaño de broca que permite al caliper tener sentido.
 
         -   **DCAL** la vamos a descartar porque tenemos muy pocas muestras.
 
-    -   EL **PEF**, es una curva que depende mucho de los minerales que se utilizen en el lodo de perforación, aunque en teoría es uno de los mejores registros para identificar tipos de roca, la presencia de metales como la barita en el lodo de perforacion muchas veces dañan los resultados de este registro, vamos a realizar un análisis mas a detalle antes de decidir si la eliminamos.
+    -   EL **PEF**, es una curva que depende mucho de los minerales que se utilicen en el lodo de perforación, aunque en teoría es uno de los mejores registros para identificar tipos de roca, la presencia de metales como la barita en el lodo de perforación muchas veces dañan los resultados de este registro, vamos a realizar un análisis mas a detalle antes de decidir si la eliminamos.
 
     -   el **RHOB**, es un registro muy sensible a las variaciones en las paredes del pozo, si los patines de la herramienta no logran tener un buen contacto las medidas no son correctas, por lo que realizaremos un ejercicio de control de calidad de estas medidas.
 
@@ -375,13 +374,13 @@ A primera vista podemos identificar lo siguiente:
 #| warning: false
 
 logs_brent_clean <-brent %>% 
-    select(-c(MUDWEIGHT, SGR, ROP, ROPA, RXO, DCAL, RMIC, DTS))
+    select(-c(MUDWEIGHT, SGR, ROP, ROPA, RXO, DCAL, RMIC, DTS, FORCE_2020_LITHOFACIES_LITHOLOGY))
 
 ```
 
 ##### el hueco del. pozo
 
-La no uniformidad del hueco del pozo causa problemas con algunas medidas, en particular a la medida del densidad ( RHOB), por lo que haremos un control de calidad al CALI y el BS que ambos son medidas de la geometria del. pozo.
+La no uniformidad del hueco del pozo causa problemas con algunas medidas, en particular a la medida del densidad ( RHOB), por lo que haremos un control de calidad al CALI y el BS que ambos son medidas de la geometría del. pozo.
 
 ```{r}
 #| label: fig-caliper
@@ -413,7 +412,7 @@ logs_brent_clean %>%
 
 En @fig-caliper vemos que el tamaño de la broca no esta en todos los pozos y algunos tienen comportamientos extraños por lo que adoptamos la siguiente estrategia:
 
--   **BS** es el valor del tamaño de la broca, en el caso del pozo 34/8-7 el valor reportado aunque probable parece un error, decidimos utilizar los valores del caliper como indicador, considerando que tienden a estabilizar alrededor de las 12.25 pulgadas, que es uno de los estandares de la zona, por lo que asignaremos el valor de la broca a este valor.
+-   **BS** es el valor del tamaño de la broca, en el caso del pozo 34/8-7 el valor reportado aunque probable parece un error, decidimos utilizar los valores del caliper como indicador, considerando que tienden a estabilizar alrededor de las 12.25 pulgadas, que es uno de los estándares de la zona, por lo que asignaremos el valor de la broca a este valor.
 
 -   En el caso de los pozos en los cuales no tenemos valores de **BS**, hemos decidido entre 6, 8.5 y 12.25 pulgadas dependiendo de los valores que observamos en el caliper (**CALI**) .
 
@@ -484,7 +483,7 @@ brent_qc %>%
    scale_color_manual(values = colors_map)
 ```
 
-Vamos a utilizar esta nueva variable que llamamos **bad_data** para asignar valores nulos a los valores de densidad (RHOB) que corresponden con la etiqueta de **TRUE**. En la figura anterior los graficos se presentan separando las distintas fases de los pozos ya que en general pueden tener comportamientos distintos.
+Vamos a utilizar esta nueva variable que llamamos **bad_data** para asignar valores nulos a los valores de densidad (**RHOB**) que corresponden con la etiqueta de **TRUE**. En la figura anterior los gráficos se presentan separando las distintas fases de los pozos ya que en general pueden tener comportamientos distintos.
 
 ```{r}
 #| label: rhob_comparacion
@@ -515,7 +514,7 @@ brent_qc %>%
 
 El registro del efecto fotoeléctrico o el PEF es uno de los mejores predictores de litología que existen, sin embargo son muy sensibles a la presencia de metales pesados, estos que normalmente no están presentes en clásticos ( como la formación Brent) sin embargo en el lodo de perforación muchas veces se agregan componentes como la barita que permiten aumentar rápidamente el peso del lodo, pero alterando totalmente las mediciones de esta herramienta.
 
-Para decidir que ruta tomar vamos a revisar este registro en todos los pozos y los compararemos con una linea en el valor de 10 barns/electron que es el valor. mas alto normalmente encontrado.
+Para decidir que ruta tomar vamos a revisar este registro en todos los pozos y los compararemos con una linea en el valor de 10 barns/electrón que es el valor. mas alto normalmente encontrado.
 
 ```{r}
 #| label: PEF_logs
@@ -543,7 +542,7 @@ brent_qc2%>%
   theme(legend.position = "bottom")
 ```
 
-Una vez hecha la limpieza nos falta una buena cantidad de registros, veremos que logramos hacer con imputaciones para tratar de mantener esta informacion.
+Una vez hecha la limpieza nos falta una buena cantidad de registros, veremos que logramos hacer con imputaciones para tratar de mantener esta información.
 
 #### **Estadisticas Univariadas**
 
@@ -570,15 +569,19 @@ ExpNumStat(brent_qc3,Qnt = c(0.25,0.75), Outlier = TRUE) %>%
   
 ```
 
-Al observar las estadísticas no vemos a simple vista ningun problema salvo la necesidad inicial de realizar imputaciones para decidir que curvas vamos a utilizar
+Al observar las estadísticas no vemos a simple vista ningún problema salvo la necesidad inicial de realizar imputaciones para decidir que curvas vamos a utilizar
 
 ### Imputaciones
 
-Para imputar los valores nulos vamos a tomar varias estrategias diferentes, en especial consideraremos las coordenadas geograficas de manera distinta que el resto de las medidas.
+En este tipo de proyectos el proceso de imputación se realiza con una filosofía distinta que con la mayoría de los estudios de predicciones. En este tipo de problemas tenemos la ventaja de conocer a priori la población de datos que vamos a utilizar para predecir. Por otro lado los modelos que generamos no son exportables, ya que las medidas, en general son muy especificas a las condiciones del yacimiento.
+
+Como conclusión por un lado tenemos la ventaja de conocer la calidad de los datos que tenemos para predecir, y la desventaja de no poder utilizar el mismo modelo en otros yacimientos.
+
+El proceso de imputación lo vamos a enfrentar con varias estrategias distintas, vamos a comenzar por imputar las coordenadas geográficas de la trayectoria de los pozos, que aunque son valores que rara vez se utilizan para este tipo de estudios.
 
 #### Imputación de coordenadas:
 
-Las coordenadas de superficie, en este caso **x_loc,** **y_loc y z_loc** tienen algunas medidas faltantes. En este caso ( y es común en la industria) son las mismas en los tres casos, esto sucede porque los sensores que determinan las coordenadas se encuentran detrás de la broca a cierta distancia y no siempre nos llega el resultado final con la estimación total de estas coordenadas. En este caso usamos la siguiente estrategia:
+Las coordenadas de de la trajectoria de los pozos, en este caso **x_loc,** **y_loc y z_loc** tienen algunas medidas faltantes. En este caso ( y es común en la industria) son las mismas en las tres medidas. Esto sucede porque los sensores que determinan las coordenadas se encuentran detrás de la broca a cierta distancia y no siempre nos llega el resultado final con la estimación total de estas coordenadas. En este caso usamos la siguiente estrategia:
 
 -   Coordenadas horizontales ( "**x_loc**" y "**y_loc**") asignamos el valor mas profundo registrado a las muestras con valores nulos. Considerando que todos los pozos son relativamente verticales y mas aún dentro de la formación de interés, esta es una buena aproximación como vemos en la @fig-coord_imput .
 
@@ -667,6 +670,74 @@ imput_algo %>%
 
 ```
 
-Visualizacion de los datos para el modelo predictivo
+### Ingenieria de datos
+
+Existen algunas relaciones conocidas que se utilizan mucho en el análisis de yacimiento y los vamos a utilizar aquí, generaremos las siguientes una serie de curvas que les agregaremos el prefijo "**ed\_**":
+
+-   Normalización del **GR**, la curva de Rayos gamma para que se pueda comparar apropiadamente debe ser normalizada, por lo que vamos a generar **ed_gr_norm**
+
+-   Calculo del volumen de arcilla **ed_vsh,** la arcilla actúa en general como un agente que previene el flujo y acumulación de hidrocarburos en una roca, por lo que un estimado de su presencia es normalmente un buen indicador de tipo de roca. En general se estima a partir de la curva de rayos gamma ya que las arcillas tienden a tener componentes radioactivos, que por su parte rara vez aparecen en arenas.
+
+-   Cálculo de la porosidad a partir de los datos de Densidad y Neutrón , la curva la llamaremos **ed_denporo**
+
+-   Porosidad efectiva **ed_phie** calculada restando el 30% de **ed_vsh** a la porosidad estimada a partir del densidad (**ed_denporo**).
+
+-   indicador de zonas permeables, vamos a utilizar la diferencia de los resistivos profundos y medio, en el espacio logartmico. Lo llamaremos **ed_ind_perm**
+
+-   Curva de Permeabilidad utilizando la correlación de Timur @petrophy2017 **ed_perm**
+
+Adicionalmente si observamos la @fig-xsection es claro que tenemos un problema de muestreo en profundidad. La. profundidad normalmente tiene efectos en algunas de las mediciones que realizamos, por lo que hemos buscado las correlaciones existentes entre la profundidad bajo el nivel del mar y las distintas medidas. En los casos que encontramos cierto grado de correlación lineal hemos generado nuevas variables que contienen el residual obtenido al eliminar la tendencia identificada. Estas variables tienen el prefijo "**re\_**".
+
+### Visualización de los datos para el modelo predictivo
+
+Nos enfocaremos ahora en los datos que nos permiten construir el modelo. La variable objetivo es la variable **lith_name** que describe el tipo de roca en el núcleo.
+
+```{r}
+
+
+
+cored_brent %>% group_by(well) %>% 
+  summarise(seccion_con_nucleo = max(DEPT)- min(DEPT))
+```
+
+En la @fig-tipoderoca podemos ver que nuestro dataset es bastante desbalanceado, quizás el único punto que a priori no es tan malo es el hecho que sea el carbón la roca menos representada, ya que el carbón es particularmente distinto especialmente en lo que respecta a la densidad con respecto al resto de los tipos de roca que vamos a analizar.
+
+```{r}
+#| label: fig-tipoderoca
+#| fig-cap: "Descripción de los tipos de roca en los núcleos"
+#| fig-subcap:
+#|   - "Tipos de roca"
+#|   - "Histogram de los tipos de roca" 
+#| layout-ncol: 2
+#| column: page-right
+
+# leemos los datos con ing de variables
+xdata <- read_rds("../data/ing_var_v1.rds") %>% select(-FORCE_2020_LITHOFACIES_LITHOLOGY)
+
+# seleccionamos solo la seccion con datos de nucleo
+xcore <- cored_brent %>% 
+  select(well, DEPT) %>% 
+  left_join(xdata, by= c("well", "DEPT") )
+
+write_rds(xcore, "../data/xcore.rds")
+
+xcore %>% count(lith_name) %>% 
+  flextable() %>% 
+  autofit() %>% 
+  fontsize(size = 10,part = "all") %>% 
+  bold(bold = TRUE, part = "header") %>% 
+  theme_alafoli()
+
+
+xcore %>% count(lith_name) %>% 
+  ggplot(aes(lith_name, n))+
+  geom_bar(stat = "identity")+
+  theme_minimal()+
+  # easy_remove_x_axis(what = "title", teach = T)+
+  theme(axis.title = element_blank())
+
+
+
+```
 
 ## References

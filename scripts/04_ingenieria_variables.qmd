@@ -1,0 +1,421 @@
+---
+title: "Ingeniria de variables"
+toc: true
+number-sections: true
+link-citations: true
+crossref:
+  fig-title: Figura
+format:
+  docx:
+    toc: true
+    number-sections: false
+    highlight-style: github
+editor: visual
+bibliography: references.bib
+---
+
+## Ingenieria de datos
+
+Existen algunas relaciones conocidas que se utilizan mucho en el análisis de yacimiento y los vamos a utilizar aqui, generaremos las siguientes curvas adicionales, para reconocer las variables les vamos a agregar el prefijo **"ed\_"**:
+
+-   Normalización del b, la curva de Rayos gamma para que se pueda comparar apropiadamente debe ser normalizada, por lo q ue vamos a generar **ed_gr_norm**
+
+-   Calculo del volumen de arcilla **ed_vsh,** arcilla actua en general como un agente que previene el flujo y acumulación de hidrocarburos en una roca, por lo que un estimado de su presencia es normalmente un buen indicador de tipo de roca. En general se estima a partir de la curva de rayos gamma ya que las arcillas tienden a tener componentes radioactivos, que por su parte rara vez aparecen en arenas.
+
+-   Cálculo de la porosidad a partir de los datos de Densidad (**RHOB**) y Neutron (**NPHI**), la curva la llamaremos **ed**\_**denporo**
+
+-   Porosidad efectiva **ed_phie** calculada restando el 30% del vsh a la porosidad estimada a partir del densidad.
+
+-   indicador de zonas permeables, vamos a utilizar la resta de los resistivos profundos con el medio, en el espacio logartmico. Lo llamaremos **ed_ind_perm**
+
+-   Curva de Permeabilidad utilizando la correlación de **Timur** que. llamaremos **ed_perm**
+
+## Normalizacion de curva de Rayos Gamma
+
+La normalización del rayo gamma se realiza en los estudios geológicos para compensar la variabilidad en la intensidad de la señal gamma debido a factores como la heterogeneidad en la densidad y la composición de las rocas, la distribución de la radioactividad y la absorción de los rayos gamma en la superficie y en el subsuelo. La normalización permite comparar de manera más precisa los datos gamma de diferentes áreas y profundidades y obtener una representación más precisa de la distribución de la radioactividad en el subsuelo.
+
+Vamos a utilizar la siguiente ecuación para normalizar los datos:
+
+$$Curve_{norm}= Ref_{low} + (Ref_{high} - Ref_{low})*\dfrac{CurveValue - Well_{low}}{Well_{high}-Well_{low}}$$
+
+La normalización la realizamos con respecto a un pozo referencia que escogeremos de forma arbitraria, en nuestro caso el pozo **34/8-3.** Los valores marcados como. "high" y "low" los vamos a seleccionar utilizando los cuantiles p5 y p95 para eliminar
+
+```{r}
+#| include: false
+#| label: libraries
+
+library(flextable)
+library(tidyverse)
+```
+
+```{r}
+#| label: carga_datos
+#| echo: false
+#| warning: false
+
+imputed_data <- readRDS("../data/imputed_data.rds")
+
+```
+
+En la @fig-distribución_GR observamos todas la distribución de la s medidas de GR separadas por pozo, y en color negro resaltamos el pozo que utilizaremos como referencia para la normalización.
+
+```{r}
+#| label: fig-distribución_GR
+#| echo: false
+#| warning: false
+#| fig-width: 8
+#| fig-height: 8
+#| fig-cap: "Distribución de todas las curvas de GR disponibles en el estudio, comparadas contra el pozo 34/8-3 que se utiliza como base para la normalización"  
+
+gr_a_normalizar <-
+  imputed_data %>% #filter(GR<200) %>%
+  ggplot(aes(GR, group = well)) +
+  geom_density(size = 0.2, color = "grey") +
+  geom_density(data = imputed_data %>% filter(well == "34/8-3"),
+               aes(GR),
+               size = 2) +
+  geom_text(aes(x = 100, y = 0.12, label = "Líneas grises representan la distribución de GR de cada pozo")) +
+  geom_text(aes(x = 100, y = 0.1, label = "Pozo referencia : 34/8-3")) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+write_rds(gr_a_normalizar, "../data/gr_a_normalizar.rds")
+
+
+```
+
+```{r}
+#| label: fig-gr_ref
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-cap: prueba de caption
+#| fig-cap-location: bottom
+
+#ref_well <- c("35/9-10")
+ref_well <- c("34/8-3")
+ 
+imputed_data %>% filter( well == ref_well)  %>% 
+  ggplot(aes(GR, fill = "red"))+
+  geom_density(size= 1)+
+  # geom_histogram()+
+  theme_bw()+
+  labs(title = paste0("Curva de distribución del registro GR en el pozo referencia ", ref_well),
+       y="",
+       x= "Rayos Gamma",
+       color = "",
+       )+
+  theme(legend.position = "none")
+```
+
+```{r}
+#| label: quantiles_gr
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-cap: prueba de caption
+#| fig-cap-location: bottom
+
+# estimamos los quuantiles 
+quantiles <- imputed_data %>%
+  group_by(well) %>%
+  summarize(p5 = quantile(GR, probs = 0.05, na.rm = TRUE),
+            p95 = quantile(GR, probs = 0.95, na.rm = TRUE))
+# Next, join the quantiles back to the original dataframe
+xdata <- imputed_data %>% left_join(quantiles, by = "well")    
+
+```
+
+```{r}
+#| label: limites_gr
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-cap: prueba de caption
+#| fig-cap-location: bottom
+#| 
+ref_low = quantiles %>% 
+    filter(well == ref_well) %>% 
+    pull(p5)
+ref_high = quantiles %>% 
+    filter(well == ref_well) %>% 
+    pull(p95)
+xdata<- xdata %>% 
+    mutate(ed_gr_norm = ref_low + (ref_high - ref_low )* ((GR - p5)/(p95-p5)))
+```
+
+```{r}
+#| label: fig-gr_normalizado
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-cap: "Registro de Rayos Gamma normalizado"
+#| fig-cap-location: bottom
+#| 
+#| 
+gr_norm <-
+  xdata %>%
+  # filter(gr_norm < 200) %>%
+  ggplot(aes(ed_gr_norm, group = well)) +
+  geom_density(size = 0.2, color = "grey") +
+  geom_density(data = xdata %>% filter(well == "34/8-3"),
+               aes(ed_gr_norm),
+               size = 2) +
+  theme_bw() +
+  labs(title = paste0("Gamma Ray normalizado utilizando using ", ref_well, " as reference")) +
+  theme(legend.position = "bottom")
+
+gr_norm
+```
+
+## Vsh
+
+Utilizaremos la @eq-vsh para el calculo del volumen de arcilla:
+
+$$
+Vshale = \frac{GR - GR min}{GRmax - GRmin}
+$$ {#eq-vsh}
+
+```{r}
+#| label: fig-vsh
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-width: 6
+#| fig-height: 4
+#| fig-cap: "VSH distribution of all wells"
+
+xdata  <- xdata %>% 
+  group_by(well) %>% 
+  mutate(ed_vsh = (ed_gr_norm - min(ed_gr_norm)) / (max(ed_gr_norm) - min(ed_gr_norm)) ) %>% 
+  ungroup()
+
+xdata %>% 
+  ggplot(aes(ed_vsh))+
+  geom_density()+
+  theme_minimal()+
+  labs(y="")
+```
+
+## Porosidad total
+
+La. porosidad a a partir de la densidad la calcularemos con la siguiente equación:
+
+$$
+denpor = \frac{densidad matriz - densidad }{densidad matriz - densidad fluido} 
+$$
+
+Vamos a utilizar un valor de densidad de matriz de Caliza (2.75 g/cc) y de fluido de 0.98 g/cc.
+
+```{r}
+#| label: fig-denporo
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-width: 6
+#| fig-height: 4
+#| fig-cap: " distribución de la porosidad en todos los pozos en todos los pozos"
+
+
+
+xdata  <- xdata %>% 
+  group_by(well) %>% 
+  mutate(ed_denporo = (2.75 - rhob_clean) / (2.75 - 0.98),
+         ed_denporo = ifelse(ed_denporo <0, 0, ifelse(ed_denporo> 0.38, 0.38, ed_denporo))
+         ) %>% 
+  ungroup()
+
+xdata %>% 
+  ggplot(aes(ed_denporo))+
+  geom_density()+
+  theme_minimal()+
+  labs(y="")
+```
+
+## **Porosidad efectiva PHIE**
+
+la calculamos con:
+
+$$
+phie = denporo - vshale *0.3
+$$
+
+```{r}
+#| label: fig-phie
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-width: 6
+#| fig-height: 4
+#| fig-cap: "Distribución de la porosidad efectiva en todos los pozos"
+
+
+
+xdata  <- xdata %>% 
+  group_by(well) %>% 
+  mutate(ed_phie = ed_denporo - ed_vsh * 0.3,
+         ed_phie = ifelse(ed_phie <0, 0, ed_phie )
+         ) %>% 
+  ungroup()
+
+xdata %>% 
+  ggplot(aes(ed_phie))+
+  geom_density()+
+  theme_minimal()+
+  labs(y="")
+```
+
+## Ind perm
+
+Para calcular el indice de la permeabilidad vamos a calcular la diferencia de los logaritmos de las resistividades.
+
+$$
+ind_perm = log(RDEP) - log(RMED)
+$$
+
+```{r}
+#| label: fig-ind_perm
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-width: 6
+#| fig-height: 4
+#| fig-cap: "Distribución del índice de la permeabilidad en todos los pozos"
+
+
+
+xdata  <- xdata %>% 
+  group_by(well) %>% 
+  mutate(ed_ind_perm = log(RDEP+0.00001) - log(RMED+0.00001),
+         ed_ind_perm = ifelse(ed_ind_perm <0, 0, ed_ind_perm )
+         ) %>% 
+  ungroup()
+
+xdata %>% 
+  ggplot(aes(ed_ind_perm))+
+  geom_density()+
+  theme_minimal()+
+  labs(y="")+
+  scale_x_log10()
+
+```
+
+## permeabilidad de TImur
+
+LA ecuación de permeabilidad de TImur tomada de @petrophy2017 es:
+
+$$
+K = \frac{(93 * denporo^{2.2})}{Sw_{irr}}^2
+$$
+
+Vamos a asumir una Swirr de 12%
+
+```{r}
+#| label: fig-timur_perm
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-width: 6
+#| fig-height: 4
+#| fig-cap: "Distribución de la permeabilidad utilizando la ecuación de Timur en todos los pozos"
+
+
+
+xdata  <- xdata %>% 
+  group_by(well) %>% 
+  mutate(ed_perm = ((93 * ed_denporo**2.2)/ 0.12)**2 
+         ) %>% 
+  ungroup()
+
+xdata %>% 
+  ggplot(aes(ed_perm))+
+  geom_density()+
+  theme_minimal()+
+  labs(y="", 
+       x= "Permeability [mD]")
+```
+
+## Tendencia con profundidad
+
+Ya hemos visto que los datos de núcleo fueron adquiridos en un rango de profundidad muy restringido comparado con el rango de profundidad de la formación Brent en todos los pozos disponibles, esto puede dar efecto a variaciones en las medidas. El ejemplo mas fácil de intuir es el de compactación, cuando tenemos un kilómetro mas de profundidad la columna de roca al ser mucho mas grande tiene un efecto importante sobre las rocas aumentando la compactación que a su vez puede afectar medidas como la densidad (**RHOB**), y el neutrón (**NPHI**), o el sónico (**DTC**) que mide la "lentitud" de la transmisión de ondas a través de las rocas, y mientras mas compactas, pues son más rápidas.
+
+La idea en este análisis es encontrar estas tendencias , eliminarlas y crear nuevas curvas que solo tengan los residuales, que en principio nos permitirán capturar mejor la relación de cada variable.
+
+```{r}
+#| include: false
+#| label: trend_data
+
+cont_trend <- xdata %>% select(well,fm,lith_name, where(is.numeric) )
+```
+
+En la @tbl-corr_data vemos la correlación entre la profundidad con las distintas variables.
+
+```{r}
+#| label: tbl-corr_data
+#| warning: false
+#| message: false
+#| echo: false
+#| tbl-cap: "Coeficiente de correlación de pearson de todas las variables contínuas contra la profundidad"
+
+curvas<- colnames(cont_trend %>% select(where(is.numeric)))
+curvas <- curvas[-which(curvas %in% c("z_loc", "DEPT", "FORCE_2020_LITHOFACIES_LITHOLOGY", "x_loc", "y_loc", "bit_size", "p5", "p95"))]
+
+
+la_corr <- tibble(Curva = rep("other", length(curvas)),
+                  corr = 0)
+
+for (i in 1:length(curvas)) {
+  la_corr[i,1] <- curvas[i]
+  la_corr[i,2] <- cor(cont_trend$z_loc, cont_trend %>% select(curvas[i]), method = "pearson")
+}
+
+la_corr %>% 
+  mutate(temp = corr**2,
+         corr = round(corr, 2)) %>% 
+  arrange(desc(temp)) %>% 
+  select(-temp) %>% 
+  flextable() %>% autofit() %>% 
+  fontsize(size = 6,part = "all") %>% 
+  bold(bold = TRUE, part = "header") %>% 
+  theme_alafoli() %>% 
+  hline(i = 8, part = "body",border = flextable::fp_border_default(width = .75, color = "red")) 
+```
+
+Vamos a crear variables con los residuales de un modelo lineal con la profundidad para las variables con un coeficiente de correlación de pearson de mas de 0.25, estas variables tendrán un prefijo de **re\_ .**
+
+```{r}
+#| label: solo_las_residuales
+#| echo: false
+
+res_var <- la_corr %>% 
+  filter(sqrt(corr**2) > 0.25 )
+
+res_data <- cont_trend %>%
+  select(well,DEPT, res_var$Curva) %>%
+  mutate(re_sp         = SP         - predict(lm(SP         ~ z_loc, data = cont_trend)),
+         re_gr         = GR         - predict(lm(GR         ~ z_loc, data = cont_trend)),
+         re_dtc        = DTC        - predict(lm(DTC        ~ z_loc, data = cont_trend)),
+         re_nphi       = NPHI       - predict(lm(NPHI       ~ z_loc, data = cont_trend)),
+         re_rhob_clean = rhob_clean - predict(lm(rhob_clean ~ z_loc, data = cont_trend)),
+         re_ed_denporo = ed_denporo - predict(lm(ed_denporo ~ z_loc, data = cont_trend)),
+         re_ed_phie    = ed_phie    - predict(lm(ed_phie    ~ z_loc, data = cont_trend)),
+         ) %>% 
+  select(well, DEPT,starts_with("re"))
+
+
+
+```
+
+## Limpieza del dataframe.
+
+```{r}
+#| label: export
+#| echo: false
+
+
+xdata <- cont_trend %>% select(-c(p5,p95)) %>% 
+  left_join(res_data, by = c("well", "DEPT"))
+
+write_rds(xdata, "../data/ing_var_v1.rds")
+
+```

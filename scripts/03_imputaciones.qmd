@@ -31,12 +31,12 @@ Considerando que los pozos son prácticamente verticales y los valores nulos par
 
 x y el valor de la ultima coordenada
 
-z, vamos a aumentar 0,15 cada muestra
+z, vamos a utilizar el promedio del intervalo de muestra para continuar profundizando el pozo
 
 ```{r}
 #| label: imputacion_de_coordenadas
 #| echo: false
-#| include: false
+
 
 # Estimamos el valor de coord x y y para la ultima coordenada con datos y el intervalo de muetrra en la profundidad
 help_coord_imput <- for_input %>% 
@@ -74,7 +74,7 @@ temp %>%
 ```{r}
 #| label: coord_y_plot
 #| echo: false
-#| include: false
+
 #| fig-width: 8
 #| fig-height: 8
 #| warning: false
@@ -99,7 +99,6 @@ coord_y_imput_plot
 ```{r}
 #| label: fig-coord_y_example
 #| echo: false
-#| include: false
 #| fig-width: 8
 #| fig-height: 8
 #| warning: false
@@ -126,7 +125,6 @@ coord_y_example
 ```{r}
 #| label: coord_x_plot
 #| echo: false
-#| include: false
 #| fig-width: 8
 #| fig-height: 8
 #| warning: false
@@ -151,7 +149,6 @@ coord_x_imput_plot
 ```{r}
 #| label: fig-un_pozox
 #| echo: false
-#| include: false
 #| fig-width: 8
 #| fig-height: 8
 #| warning: false
@@ -178,7 +175,6 @@ coord_x_example
 ```{r}
 #| label: coord_z_plot
 #| echo: false
-#| include: false
 #| fig-width: 8
 #| fig-height: 8
 #| warning: false
@@ -205,7 +201,6 @@ coord_z_imput_plot
 ```{r}
 #| label: coord_z_example
 #| echo: false
-#| include: false
 #| fig-width: 8
 #| fig-height: 8
 #| warning: false
@@ -238,53 +233,53 @@ coord_z_example
 
 for_input <-temp %>% select(-c("x", "y", "depth_step", "count"))
 
-no_model_data <- for_input %>% select(well, fm, brent, lith_name, FORCE_2020_LITHOFACIES_LITHOLOGY, bad_data, x_loc, y_loc, z_loc)
+no_model_data <- for_input %>% select(well, fm, brent, lith_name, bad_data, x_loc, y_loc, z_loc)
 
 imput_rec <- recipe(DEPT ~ . , data = for_input %>% 
-                      select(-c(well, fm, brent, lith_name, FORCE_2020_LITHOFACIES_LITHOLOGY, bad_data, x_loc, y_loc,z_loc)) )
+                      select(-c(well, fm, brent, lith_name, bad_data, x_loc, y_loc,z_loc)) )
 
-imputed_knn <-
-  imput_rec %>%
-  step_impute_knn( all_predictors(),
-                  # columns = "Cholesterol"
-                  ) %>%
-  prep(for_input) %>%
-  bake(for_input) %>%
-  cbind(no_model_data)
-
-imputed_bag <-
-  imput_rec %>%
-  step_impute_bag(all_predictors(),
-                  # columns = "Cholesterol"
-                  ) %>%
-  prep(for_input) %>%
-  bake(for_input) %>% cbind(no_model_data)
-
-imputed_lin <-
-  imput_rec %>%
-  step_impute_linear(list_logs_to_impute$Variable_Name,
-                     impute_with = imp_vars(DEPT)
-                  # columns = "Cholesterol"
-                  ) %>%
-  prep(for_input) %>%
-  bake(for_input) %>%  cbind(no_model_data)
-
-imputed_mean <-
-  imput_rec %>%
-  step_impute_mean(list_logs_to_impute$Variable_Name
-                  # columns = "Cholesterol"
-                  ) %>%
-  prep(for_input) %>%
-  bake(for_input) %>%  cbind(no_model_data)
-
-imputed_median <-
-  imput_rec %>%
-  step_impute_median(list_logs_to_impute$Variable_Name
-                  # columns = "Cholesterol"
-                  ) %>%
-  prep(for_input) %>%
-  bake(for_input) %>%
-  cbind(no_model_data)
+# imputed_knn <-
+#   imput_rec %>%
+#   step_impute_knn( all_predictors(),
+#                   # columns = "Cholesterol"
+#                   ) %>%
+#   prep(for_input) %>%
+#   bake(for_input) %>%
+#   cbind(no_model_data)
+# 
+# imputed_bag <-
+#   imput_rec %>%
+#   step_impute_bag(all_predictors(),
+#                   # columns = "Cholesterol"
+#                   ) %>%
+#   prep(for_input) %>%
+#   bake(for_input) %>% cbind(no_model_data)
+# 
+# imputed_lin <-
+#   imput_rec %>%
+#   step_impute_linear(list_logs_to_impute$Variable_Name,
+#                      impute_with = imp_vars(DEPT)
+#                   # columns = "Cholesterol"
+#                   ) %>%
+#   prep(for_input) %>%
+#   bake(for_input) %>%  cbind(no_model_data)
+# 
+# imputed_mean <-
+#   imput_rec %>%
+#   step_impute_mean(list_logs_to_impute$Variable_Name
+#                   # columns = "Cholesterol"
+#                   ) %>%
+#   prep(for_input) %>%
+#   bake(for_input) %>%  cbind(no_model_data)
+# 
+# imputed_median <-
+#   imput_rec %>%
+#   step_impute_median(list_logs_to_impute$Variable_Name
+#                   # columns = "Cholesterol"
+#                   ) %>%
+#   prep(for_input) %>%
+#   bake(for_input) %>%
+#   cbind(no_model_data)
 # 
 # 
 # 
@@ -296,11 +291,11 @@ imputed_median <-
 # write_rds(imputed_mean, "../data/imputed_mean.rds")
 # write_rds(imputed_median, "../data/imputed_median.rds")
 
-# imputed_knn  <-    read_rds( "../data/imputed_knn.rds")
-# imputed_bag  <-    read_rds( "../data/imputed_bag.rds")
-# imputed_lin  <-    read_rds( "../data/imputed_lin.rds")
-# imputed_mean  <-   read_rds( "../data/imputed_mean.rds")
-# imputed_median  <- read_rds( "../data/imputed_median.rds")
+imputed_knn  <-    read_rds( "../data/imputed_knn.rds")
+imputed_bag  <-    read_rds( "../data/imputed_bag.rds")
+imputed_lin  <-    read_rds( "../data/imputed_lin.rds")
+imputed_mean  <-   read_rds( "../data/imputed_mean.rds")
+imputed_median  <- read_rds( "../data/imputed_median.rds")
 
 ```
 
@@ -310,31 +305,39 @@ imputed_median <-
 
 
 
-all_imputed_orig <-
-  imputed_knn %>%
+# all_imputed_orig <-
+  # imputed_knn %>%
   # select(c(list_logs_to_impute$Variable_Name, "well")) %>%
-  mutate(imp = "knn") %>%
-  bind_rows(temp %>%
-              # select(c(list_logs_to_impute$Variable_Name, "well")) %>%
-              mutate(imp = "orig")) %>%
-  bind_rows(imputed_bag    %>%
-              # select(c(list_logs_to_impute$Variable_Name, "well")) %>%
-              mutate(imp = "bag")) %>%
-  bind_rows(imputed_lin    %>%
-              # select(c(list_logs_to_impute$Variable_Name, "well")) %>%
-              mutate(imp = "lin")) %>%
-  bind_rows(imputed_mean   %>%
-              # select(c(list_logs_to_impute$Variable_Name, "well")) %>%
-              mutate(imp = "mean")) %>%
-  bind_rows(imputed_median %>%
-              # select(c(list_logs_to_impute$Variable_Name, "well")) %>%
-              mutate(imp = "median"))
+  # mutate(imp = "knn") %>%
+  # bind_rows(temp %>%
+  #             # select(c(list_logs_to_impute$Variable_Name, "well")) %>%
+  #             mutate(imp = "orig")) %>%
+  # bind_rows(imputed_bag    %>%
+  #             # select(c(list_logs_to_impute$Variable_Name, "well")) %>%
+  #             mutate(imp = "bag")) %>%
+  # bind_rows(imputed_lin    %>%
+  #             # select(c(list_logs_to_impute$Variable_Name, "well")) %>%
+  #             mutate(imp = "lin")) %>%
+  # bind_rows(imputed_mean   %>%
+  #             # select(c(list_logs_to_impute$Variable_Name, "well")) %>%
+  #             mutate(imp = "mean")) %>%
+  # bind_rows(imputed_median %>%
+              # # select(c(list_logs_to_impute$Variable_Name, "well")) %>%
+              # mutate(imp = "median"))
 
-all_imputed <- all_imputed_orig %>%
-  select(c(list_logs_to_impute$Variable_Name, "well", "imp")) %>%
-  pivot_longer(-c(well, imp),
-               values_to = "value",
-               names_to = "data")
+# all_imputed <- all_imputed_orig %>%
+#   select(c(list_logs_to_impute$Variable_Name, "well", "imp")) %>%
+#   pivot_longer(-c(well, imp),
+#                values_to = "value",
+#                names_to = "data")
+
+
+# write_rds(all_imputed,      "../data/all_imputed.rds"      )
+# write_rds(all_imputed_orig, "../data/all_imputed_orig.rds" )
+# 
+all_imputed      <- read_rds("../data/all_imputed.rds"     )
+all_imputed_orig <- read_rds("../data/all_imputed_orig.rds")
+
 
 
 all_imputed %>%
@@ -345,21 +348,12 @@ all_imputed %>%
 ```
 
 ```{r}
-#| label: data_imputada
-#| echo: false
-#| 
-# write_rds(all_imputed,      "../data/all_imputed.rds"      )
-# write_rds(all_imputed_orig, "../data/all_imputed_orig.rds" )
-# 
-# all_imputed      <- read_rds("../data/all_imputed.rds"     )
-# all_imputed_orig <- read_rds("../data/all_imputed_orig.rds")
-```
-
-```{r}
 #| label: all_imput_plot
 #| echo: false
 #| fig-width: 8
 #| fig-height: 8
+#| warning: false
+#| message: false
 
 
 all_imputed %>%
@@ -373,6 +367,11 @@ all_imputed %>%
 ```{r}
 #| label: rhob_plot
 #| echo: false
+#| warning: false
+#| message: false
+
+
+
 rhob_impute_plot <- 
   all_imputed %>%
   filter(data == "rhob_clean",
@@ -390,6 +389,10 @@ rhob_impute_plot
 ```{r}
 #| label: rhob_table
 #| echo: false
+#| warning: false
+#| message: false
+
+
 rhob_impute_table <- 
 all_imputed %>% filter(data == "rhob_clean", imp %in% c("bag", "knn", "orig", "mean")) %>% 
   group_by(imp) %>% 
@@ -418,6 +421,9 @@ rhob_impute_table
 ```{r}
 #| label: drho_plot
 #| echo: false
+#| #| warning: false
+#| message: false
+
 drhob_impute_plot<-
   all_imputed %>%
   filter(data == "DRHO",
@@ -435,6 +441,9 @@ drhob_impute_plot
 ```{r}
 #| label: drho_table
 #| echo: false
+#| #| warning: false
+#| message: false
+
 drho_impute_table <- 
 all_imputed %>% filter(data == "DRHO", imp %in% c("bag", "knn", "orig", "mean")) %>% 
   group_by(imp) %>% 
@@ -473,6 +482,9 @@ Probamos el PEF
 ```{r}
 #| label: PEF_plot
 #| echo: false
+#| warning: false
+#| message: false
+
 pef_imp_plot <- 
 all_imputed %>%
   filter(data == "pef_clean",
@@ -492,6 +504,8 @@ revisamos la table del PEF
 ```{r}
 #| label: PEF_table
 #| echo: false
+#| warning: false
+#| message: false
 
 
 pef_impute_table <- 
@@ -523,6 +537,10 @@ PEF with bag
 
 ```{r}
 #| label: SP_plot
+#| warning: false
+#| echo: false
+#| message: false
+
 
 sp_imp_plot <- 
   all_imputed %>%
@@ -540,6 +558,9 @@ sp_imp_plot
 
 ```{r}
 #| label: SP_table
+#| echo: false
+#| warning: false
+#| message: false
 
 
 sp_impute_table <- 
@@ -572,6 +593,9 @@ sp_impute_table
 
 ```{r}
 #| label: cali_plot
+#| echo: false
+#| warning: false
+#| message: false
 
 
 cal_imp_plot <- 
@@ -590,7 +614,9 @@ cal_imp_plot
 
 ```{r}
 #| label: cali_table
-
+#| echo: false
+#| warning: false
+#| message: false
 
 cal_impute_table <- 
 all_imputed %>% filter(data == "CALI", imp %in% c("bag", "knn", "orig", "mean")) %>% 
@@ -621,7 +647,9 @@ we selected the knn
 
 ```{r}
 #| label: rdep_plot
+#| echo: false
 #| warning: false
+#| message: false
 
 
 rdep_imp_plot <- 
@@ -641,7 +669,9 @@ rdep_imp_plot
 
 ```{r}
 #| label: rdep_table
-
+#| echo: false
+#| warning: false
+#| message: false
 
 rdep_impute_table <- 
 all_imputed %>% filter(data == "RDEP", imp %in% c("bag", "knn", "orig", "mean")) %>% 
@@ -672,7 +702,9 @@ now
 
 ```{r}
 #| label: rsha_plot
-
+#| echo: false
+#| warning: false
+#| message: false
 
 rsha_imp_plot <- 
   all_imputed %>%
@@ -692,6 +724,8 @@ rsha_imp_plot
 ```{r}
 #| label: rsha_table
 #| echo: false
+#| warning: false
+#| message: false
 
 
 rsha_impute_table <-
@@ -724,6 +758,8 @@ now the RMED
 ```{r}
 #| label: rmed_plot
 #| echo: false
+#| warning: false
+#| message: false
 
 
 rmed_imp_plot <- 
@@ -744,6 +780,8 @@ rmed_imp_plot
 ```{r}
 #| label: rmed_table
 #| echo: false
+#| warning: false
+#| message: false
 
 
 rmed_impute_table <-
@@ -774,6 +812,8 @@ rmed_impute_table
 ```{r}
 #| label: dtc_plot
 #| echo: false
+#| warning: false
+#| message: false
 
 
 dtc_imp_plot <- 
@@ -794,6 +834,8 @@ dtc_imp_plot
 ```{r}
 #| label: dtc_table
 #| echo: false
+#| warning: false
+#| message: false
 
 
 dtc_impute_table <-
@@ -825,6 +867,8 @@ dtc_impute_table
 ```{r}
 #| label: nphi_plot
 #| echo: false
+#| warning: false
+#| message: false
 
 
 nphi_imp_plot <- 
@@ -845,6 +889,8 @@ nphi_imp_plot
 ```{r}
 #| label: nphi_table
 #| echo: false
+#| warning: false
+#| message: false
 
 
 nphi_impute_table <-
@@ -877,6 +923,8 @@ nphi_impute_table
 ```{r}
 #| label: fig-gr_plot
 #| echo: false
+#| warning: false
+#| message: false
 
 
 gr_imp_plot <- 
@@ -897,6 +945,8 @@ gr_imp_plot
 ```{r}
 #| label: gr_table
 #| echo: false
+#| warning: false
+#| message: false
 
 
 gr_impute_table <-
@@ -929,6 +979,8 @@ gr_impute_table
 ```{r}
 #| label: imputaciones_table
 #| echo: false
+#| warning: false
+#| message: false
 
 imput_algo <- tibble(Curva = c("CALI", "RDEP", "RSHA", "RMED", "SP", "DTC", "NPHI", "DRHO", "rhob_clean", "pef_clean" , "GR"),
                      imput = c("knn",   "knn", "knn",  "bag",  "bag", "knn", "knn", "bag", "knn",         "bag"  , "mean")) 
@@ -941,10 +993,13 @@ imput_algo <- tibble(Curva = c("CALI", "RDEP", "RSHA", "RMED", "SP", "DTC", "NPH
 Visualización de las imputaciones
 
 ```{r}
-
+#| echo: false
+#| warning: false
+#| message: false
+#| 
 imputed_data <-
   imputed_bag %>% 
-  select(well, DEPT, x_loc, y_loc, z_loc, RMED, SP, DRHO, pef_clean, FORCE_2020_LITHOFACIES_LITHOLOGY,bit_size,lith_name, fm) %>%
+  select(well, DEPT, x_loc, y_loc, z_loc, RMED, SP, DRHO, pef_clean, bit_size,lith_name, fm) %>%
   cbind(imputed_mean %>%
           select(GR)) %>%
   cbind(imputed_knn %>%
