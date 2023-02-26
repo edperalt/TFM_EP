@@ -1,0 +1,93 @@
+---
+title: "AutoML"
+format: docx
+editor: visual
+---
+
+```{r}
+#| label: librerias
+#| message: false
+#| warning: false
+#| echo: false
+#| 
+library(h2o)
+library(flextable)
+library(tidyverse)
+library(tidymodels)
+
+```
+
+```{r}
+#| label: loadlib
+#| message: false
+#| warning: false
+#| echo: false
+
+xcore <- read_rds("../data/xcore.rds") %>% dplyr::select(-c(fm, bit_size))
+xcore$lith_name <- as.factor(xcore$lith_name) 
+
+xcore <- xcore %>% 
+  relocate(lith_name, .before = well)
+```
+
+```{r}
+set.seed(123) # for reproducibility
+xcore_split <- initial_split(xcore, prop = 0.7, strata = lith_name) # 70% training, 30% testing
+
+# extract the training and testing sets
+xcore_tr <- training(xcore_split)
+xcore_te <-   testing(xcore_split)
+
+xcore_train <- xcore_tr %>%  dplyr::select(-well)
+xcore_test <- xcore_te %>%  dplyr::select(-well)
+
+write_rds(xcore_train, "../data/modelos/00_xcore_train.rds")
+write_rds(xcore_test, "../data/modelos/00_xcore_test.rds")
+```
+
+```{r}
+h2o.init()
+h2o.shutdown()
+h2o.init(nthreads=8)
+
+
+```
+
+```{r}
+
+train <- as.h2o(xcore_train)
+
+start_time <- Sys.time()  
+
+
+aml <- h2o.automl(x = 2:40,y=1,training_frame = train,
+                  max_models = 20,
+                  seed = 1,
+                  keep_cross_validation_predictions=TRUE)
+
+lb <- aml@leaderboard
+print(lb, n = nrow(lb))  # Print all rows instead of default (6 rows)
+
+aml@leader
+
+
+end_time <- Sys.time()
+
+end_time - start_time
+
+
+h2o.shutdown()
+
+```
+
+```{r}
+
+write_rds(aml, "../data/modelos/01_aml_h2o_all_mod.rds")
+
+```
+
+```{r}
+aml@leaderboard %>% as_tibble() %>% flextable() %>% 
+  autofit() %>% 
+  theme_alafoli()
+```

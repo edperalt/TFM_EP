@@ -152,7 +152,12 @@ saveRDS(final_logs, "data/logs_core_rds.rds")
 
 final_logs<- read_rds("data/logs_core_rds.rds")
 # lista de pozos con nucleos
+#"34/10-16". "30/6-5"  "35/11-5"  "34/8-1"  "34/7-21"
 
+final_logs <- final_logs %>% 
+  mutate(core=ifelse(well %in% c("34/10-16","30/6-5", "35/11-5","34/8-1", "34/7-21") &
+                        brent == T & core == T, T, F))
+  
 
 cored_brent_wells <-
   final_logs %>% mutate(core_brent = ifelse(core == TRUE &
@@ -265,7 +270,7 @@ cored_brent <- final_logs %>% filter(brent == TRUE,
                                      core == TRUE) 
 saveRDS(cored_brent, "data/cored_brent.rds")
 
-
+write_rds(final_logs, "data/")
 
 
 

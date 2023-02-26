@@ -1,0 +1,376 @@
+---
+title: "Selección de variables"
+format: docx
+editor: visual
+bibliography: references.bib
+---
+
+## Selección de variables
+
+```{r}
+#| label: librerias
+#| message: false
+#| warning: false
+#| echo: false
+#| 
+library(MASS)
+library(nnet)
+library(Boruta)
+library(caret)
+library(flextable)
+library(tidymodels)
+library(tidyverse) 
+
+```
+
+```{r}
+#| label: loadlib
+#| message: false
+#| warning: false
+#| echo: false
+
+
+xcore <- read_rds("../data/xcore.rds") %>% dplyr::select(-c(fm, bit_size))
+xcore$lith_name <- as.factor(xcore$lith_name) 
+
+
+xcore <- xcore %>% 
+  relocate(lith_name, .before = well)
+
+
+```
+
+Separamos los datos en training y testing, considerando que el set de datos no es muy grande vamos a utilizar 70/30 como la relación de datos para antrenamiento y para testing. Ademas estratificamos el split con la la variable objetivo (**lith_name**).
+
+```{r}
+#| label: train_test
+#| message: false
+#| warning: false
+#| echo: true
+
+
+set.seed(123) 
+xcore_split <- initial_split(xcore, prop = 0.7, strata = lith_name) # 70% training, 30% testing
+
+# extract the training and testing sets
+xcore_tr <- training(xcore_split)
+xcore_te <-   testing(xcore_split)
+
+xcore_train <- xcore_tr %>%  dplyr::select(-well)
+xcore_test <- xcore_te %>%  dplyr::select(-well)
+
+write_rds(xcore_train, "../data/modelos/00_xcore_train.rds")
+write_rds(xcore_test, "../data/modelos/00_xcore_test.rds")
+```
+
+### Modelo simple
+
+utilizaremos la librería @nnet que define un modelo que usa predictores lineales para predecir multiclases utilizando la distribución multinomial. La libreria tiene un parametro tuneable que describe el nivel de regularización, este valor lo asmiremos constante con el valor de 1.
+
+```{r}
+#| label: model1
+#| message: false
+#| warning: false
+#| echo: true
+
+# definimos la especificación del algoritmo
+multireg_spec <- multinom_reg(penalty = 1) %>%
+  set_engine("nnet") %>%
+  set_mode("classification")
+
+# entrenamos el modelo
+set.seed(2056)
+multireg_fit <- multireg_spec %>% 
+  fit(lith_name ~ ., data = xcore_train)
+
+
+
+
+```
+
+con el modelo ajustado podemos probarlo en los datos de test.
+
+```{r}
+#| label: pred_test
+#| 
+# Make predictions for the test set
+xcore_results <- xcore_test %>% select(lith_name) %>% 
+  bind_cols(multireg_fit %>% 
+              predict(new_data = xcore_test)) %>% 
+  bind_cols(multireg_fit %>% 
+              predict(new_data = xcore_test, type = "prob"))
+
+# Print predictions
+xcore_results %>% 
+  slice_head(n = 5) %>% 
+  flextable() %>% 
+  autofit() %>% 
+  theme_alafoli()
+```
+
+Revisamos la matriz de confusión:
+
+```{r}
+#| label: conf_m
+# Confusion matrix
+xcore_results %>% 
+  conf_mat(lith_name, .pred_class)
+```
+
+```{r}
+#| label: conf_m_plot
+#| 
+update_geom_defaults(geom = "tile", new = list(color = "black", alpha = 0.7))
+# Visualizamos la matriz de confusion
+xcore_results %>% 
+  conf_mat(lith_name, .pred_class) %>% 
+  autoplot(type = "heatmap")
+```
+
+Vemos que nuestro modelo tiene problemas en la descripción del Sandstone/Shale, pero en general tenemos un comportamiento que parece razonable. A continuación presentamos la tanbla
+
+```{r}
+# Statistical summaries for the confusion matrix
+conf_mat(data = xcore_results, truth = lith_name, estimate = .pred_class) %>% 
+  summary() %>% flextable() %>% autofit() %>% theme_alafoli()
+```
+
+```{r}
+# Curva ROC
+xcore_results %>% 
+  roc_curve(lith_name, c(.pred_Coal, .pred_Limestone, 
+                         .pred_Sandstone,
+                         `.pred_Sandstone/Shale`,
+                         .pred_Shale
+                         )) %>% 
+  ggplot(aes(x = 1 - specificity, y = sensitivity, color = .level)) +
+  geom_abline(lty = 2, color = "gray80", size = 0.9) +
+  geom_path(show.legend = T, alpha = 0.6, size = 1.2) +
+  coord_equal()+
+  theme_minimal()+
+  labs(color = "tipos de roca")
+```
+
+Utilizamos la función **stepAIC** de la librería @MASS para realizar la selección de variables. Par trabajar con esta librería vamos a transformar la variable objetivo en factor y las variables discretas en variables dummies para que funcione el algoritmo correctamente.
+
+### Stepwise utilizando todos los datos disponibles
+
+Iniciamos con un total de `r ncol(xcore_sw) -1` variables
+
+```{r}
+#| label: stepw-1
+#| message: false
+#| warning: false
+#| echo: false
+
+set.seed(123)
+
+data <-xcore_train
+
+full <- multinom(lith_name ~ .       , data = data)
+null <- multinom(lith_name ~ 1       , data = data)
+
+step_base <- stepAIC(null,scope = list(upper=full), direction = "both", trace = FALSE)
+
+
+var_base <- step_base %>% tidy %>% select(term) %>% unique() %>% pull()
+var_base <- var_base[-1]
+
+write_rds(var_base, "../data/var_base.rds")
+
+
+
+```
+
+Obtenemos una lista de variables inesperada, es extraño ver la variable profundidad, ademas llama la atención ver la variable de impedancia acústica junto a la variable de los residuales de la impedancia acustica al correlacionarla con la profundidad..
+
+EL siguiente modelo lo realizaremos con la selección de los registros originales.
+
+### Stepwise con registros originales
+
+```{r}
+#| label: stepw-2
+#| message: false
+#| warning: false
+#| echo: false
+
+data <-xcore_sw %>% dplyr::select(lith_name,DEPT, x_loc, y_loc, z_loc, RMED, SP, DRHO, pef_clean, GR, CALI, RDEP, RSHA, DTC, NPHI, rhob_clean)
+
+set.seed(123)
+
+full <- multinom(lith_name ~ .       , data = data)
+null <- multinom(lith_name ~ 1       , data = data)
+
+
+step_orig <- stepAIC(null,scope = list(upper=full), direction = "both", trace = FALSE)
+
+var_orig <- step_orig %>% tidy %>% select(term) %>% unique() %>% pull()
+var_orig <- var_orig[-1]
+write_rds(var_orig, "../data/var_orig.rds")
+
+
+```
+
+En este caso probablemente al trabajar eliminaremos una de las curvas de profundidad, ya que la z_loc es la profundidad vertical y DEPT a lo largo de la trayectoria del pozo, tienen diferencias, pero altísimo correlación.
+
+### Stepwise con las medidas de ingenieria de datos inicial
+
+```{r}
+#| label: stepw-3
+#| message: false
+#| warning: false
+#| echo: false
+
+data <-xcore_sw %>% dplyr::select(lith_name,starts_with("ed"))
+
+set.seed(123)
+
+full <- multinom(lith_name ~ .       , data = data)
+null <- multinom(lith_name ~ 1       , data = data)
+
+
+
+step_ing <- stepAIC(null,scope = list(upper=full), direction = "both", trace = FALSE)
+
+var_ing <- step_ing %>% tidy %>% select(term) %>% unique() %>% pull()
+var_ing <- var_ing[-1]
+write_rds(var_ing, "../data/var_ing.rds")
+
+print(paste0("Las variables seleccionadas son: "))
+print(var_ing)
+```
+
+### Stepwise con variables con transformacion logarítmica
+
+```{r}
+#| label: stepw-4
+#| message: false
+#| warning: false
+#| echo: false
+
+data <-xcore_sw %>% dplyr::select(lith_name,starts_with("log"))
+
+set.seed(123)
+
+full <- multinom(lith_name ~ .       , data = data)
+null <- multinom(lith_name ~ 1       , data = data)
+
+
+step_log <- stepAIC(null,scope = list(upper=full), direction = "both", trace = FALSE)
+
+var_log <- step_log %>% tidy %>% select(term) %>% unique() %>% pull()
+var_log <- var_log[-1]
+write_rds(var_log, "../data/var_log.rds")
+
+print(paste0("Las variables seleccionadas son: "))
+print(var_log)
+```
+
+### **Stepwise con residuales de tendencia de profundidad**
+
+```{r}
+#| label: stepw-5
+#| message: false
+#| warning: false
+#| echo: false
+
+data <-xcore_sw %>% dplyr::select(lith_name,starts_with("re"))
+
+set.seed(123)
+
+
+full <- multinom(lith_name ~ .       , data = data)
+null <- multinom(lith_name ~ 1       , data = data)
+
+
+step_re <- stepAIC(null,scope = list(upper=full), direction = "both", trace = FALSE)
+
+var_re <- step_re %>% tidy %>% select(term) %>% unique() %>% pull()
+var_re <- var_re[-1]
+write_rds(var_re, "../data/var_re.rds")
+
+print(paste0("Las variables seleccionadas son: "))
+print(var_re)
+```
+
+### Stepwise con registros seleccionados por el geólogo
+
+```{r}
+#| label: stepw-6
+#| message: false
+#| warning: false
+#| echo: false
+
+data <-xcore_sw %>% dplyr::select(lith_name,"re_dtc", "re_rhob_clean", "re_gr", "re_log_RSHA","re_sp", "re_log_RMED" ,"re_z" , "re_nphi","log_RDEP" , "pef_clean", "CALI" )
+
+set.seed(123)
+
+full <- multinom(lith_name ~ .       , data = data)
+null <- multinom(lith_name ~ 1       , data = data)
+
+
+step_geo <- stepAIC(null,scope = list(upper=full), direction = "both", trace = FALSE)
+
+var_geo <- step_geo %>% tidy %>% select(term) %>% unique() %>% pull()
+var_geo <- var_geo[-1]
+write_rds(var_geo, "../data/var_geo.rds")
+
+print(paste0("Las variables seleccionadas son: "))
+print(var_geo)
+```
+
+### Stepwise con registros seleccionados por el geólogo conservador
+
+```{r}
+#| label: stepw-7
+#| message: false
+#| warning: false
+#| echo: false
+
+data <-xcore_sw %>% dplyr::select(lith_name, "ed_gr_norm", "pef_clean", "DTC", "NPHI","rhob_clean",  "log_RMED","log_RSHA","log_RDEP", "log_ind_perm", "CALI")
+
+set.seed(123)
+
+full <- multinom(lith_name ~ .       , data = data)
+null <- multinom(lith_name ~ 1       , data = data)
+
+
+step_geo2 <- stepAIC(null,scope = list(upper=full), direction = "both", trace = FALSE)
+
+var_geo2 <- step_geo2 %>% tidy %>% select(term) %>% unique() %>% pull()
+var_geo2 <- var_geo2[-1]
+write_rds(var_geo2, "../data/var_geo2.rds")
+
+print(paste0("Las variables seleccionadas son: "))
+print(var_geo2)
+```
+
+### Selección de variables usando @Boruta
+
+```{r}
+#| label: boruta
+#| message: false
+#| warning: false
+#| echo: false
+
+set.seed(123)
+
+salida <- Boruta(lith_name ~. , data = xcore_train ,doTrace =3)
+
+salida
+```
+
+```{r}
+names(salida$finalDecision[salida$finalDecision %in% "Confirmed"])
+```
+
+```{r}
+library(SmartEDA)
+
+sma_var <- ExpCatStat(xcore_train,Target="lith_name",result = "Stat",clim=10,nlim=5,bins=10,Pclass="Yes",plot=F,top=20,Round=2) 
+  
+
+sma_var %>% arrange(desc(`Cramers V`)) %>% 
+  flextable() %>%   autofit()
+
+```

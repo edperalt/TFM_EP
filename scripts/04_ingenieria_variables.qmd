@@ -30,15 +30,19 @@ Existen algunas relaciones conocidas que se utilizan mucho en el análisis de ya
 
 -   Curva de Permeabilidad utilizando la correlación de **Timur** que. llamaremos **ed_perm**
 
-## Normalizacion de curva de Rayos Gamma
+-   Impedancia acústica, @acoustic es el producto de la velocidad sísmica y la densidad y normalmente se denota con la letra Z, en este caso la llamaremos **ed_Z**. La velocidad sísmica es el inverso de la curva del sónico **DTC**.
 
-La normalización del rayo gamma se realiza en los estudios geológicos para compensar la variabilidad en la intensidad de la señal gamma debido a factores como la heterogeneidad en la densidad y la composición de las rocas, la distribución de la radioactividad y la absorción de los rayos gamma en la superficie y en el subsuelo. La normalización permite comparar de manera más precisa los datos gamma de diferentes áreas y profundidades y obtener una representación más precisa de la distribución de la radioactividad en el subsuelo.
+-   Transformación logarítmica, las curvas relacionadas a permeabilidad y resistividades son normalmente trabajadas en el espacio logarítmico. En este caso les agregamos un prefijo de **log\_**
+
+## Normalización de curva de Rayos Gamma
+
+La normalización del rayo gamma se realiza en los estudios geológicos para compensar la variabilidad en la intensidad de la señal gamma debido a factores como la heterogeneidad en la densidad y la composición de las rocas, la distribución de la radio-actividad y la absorción de los rayos gamma en la superficie y en el subsuelo. La normalización permite comparar de manera más precisa los datos gamma de diferentes áreas y profundidades y obtener una representación más precisa de la distribución de la radio-actividad en el subsuelo.
 
 Vamos a utilizar la siguiente ecuación para normalizar los datos:
 
 $$Curve_{norm}= Ref_{low} + (Ref_{high} - Ref_{low})*\dfrac{CurveValue - Well_{low}}{Well_{high}-Well_{low}}$$
 
-La normalización la realizamos con respecto a un pozo referencia que escogeremos de forma arbitraria, en nuestro caso el pozo **34/8-3.** Los valores marcados como. "high" y "low" los vamos a seleccionar utilizando los cuantiles p5 y p95 para eliminar
+La normalización la realizamos con respecto a un pozo referencia que escogeremos de forma arbitraria, en nuestro caso el pozo **34/8-3.** Los valores marcados como "high" y "low" los vamos a seleccionar utilizando los cuantiles p5 y p95 para eliminar
 
 ```{r}
 #| include: false
@@ -79,8 +83,9 @@ gr_a_normalizar <-
   theme_minimal() +
   theme(legend.position = "bottom")
 
-write_rds(gr_a_normalizar, "../data/gr_a_normalizar.rds")
+# write_rds(gr_a_normalizar, "../data/gr_a_normalizar.rds")
 
+gr_a_normalizar
 
 ```
 
@@ -133,15 +138,18 @@ xdata <- imputed_data %>% left_join(quantiles, by = "well")
 #| warning: false
 #| fig-cap: prueba de caption
 #| fig-cap-location: bottom
-#| 
+
+
 ref_low = quantiles %>% 
     filter(well == ref_well) %>% 
     pull(p5)
 ref_high = quantiles %>% 
     filter(well == ref_well) %>% 
     pull(p95)
+
 xdata<- xdata %>% 
     mutate(ed_gr_norm = ref_low + (ref_high - ref_low )* ((GR - p5)/(p95-p5)))
+
 ```
 
 ```{r}
@@ -152,7 +160,7 @@ xdata<- xdata %>%
 #| fig-cap: "Registro de Rayos Gamma normalizado"
 #| fig-cap-location: bottom
 #| 
-#| 
+
 gr_norm <-
   xdata %>%
   # filter(gr_norm < 200) %>%
@@ -270,7 +278,7 @@ xdata %>%
 Para calcular el indice de la permeabilidad vamos a calcular la diferencia de los logaritmos de las resistividades.
 
 $$
-ind_perm = log(RDEP) - log(RMED)
+ind\_perm = log(RDEP) - log(RMED)
 $$
 
 ```{r}
@@ -300,7 +308,7 @@ xdata %>%
 
 ```
 
-## permeabilidad de TImur
+## permeabilidad de Timur
 
 LA ecuación de permeabilidad de TImur tomada de @petrophy2017 es:
 
@@ -308,7 +316,7 @@ $$
 K = \frac{(93 * denporo^{2.2})}{Sw_{irr}}^2
 $$
 
-Vamos a asumir una Swirr de 12%
+Vamos a asumir una Swirr de 12%, que es una suposición válida para rocas relativamente buenas. Este es un ejercicio que normalemente se hace utilizando otro tipo de experimentos que no tenemos a disposiciónpor lo que nos enfocamos en algo que nos permita discriminar outliers con buenas propiedades petrofísicas.
 
 ```{r}
 #| label: fig-timur_perm
@@ -333,6 +341,68 @@ xdata %>%
   theme_minimal()+
   labs(y="", 
        x= "Permeability [mD]")
+```
+
+## Impedancia acústica
+
+```{r}
+#| label: fig-impedancia_acústica
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-width: 6
+#| fig-height: 4
+#| fig-cap: "Distribución de la impedancia acústica en todos los pozos"
+
+
+
+xdata  <- xdata %>% 
+  group_by(well) %>% 
+  mutate(ed_z = rhob_clean * (1 / DTC)
+         ) %>% 
+  ungroup()
+
+xdata %>% 
+  ggplot(aes(ed_z))+
+  geom_density()+
+  theme_minimal()+
+  labs(y="", 
+       x= "Impedancia Acústica")
+```
+
+## **Variables con comportamiento logarítmico**
+
+En estos análisis hay medidas que siempre analizamos en el espacio logarítmico ya que presentan valores en distintos ordenes de magnitud. Vamos a generar para las variables de **permeabilidad** **resistividad** y el índice de permeabilidad transformaciones logarítmicas y las identificaremos con el prefijo **log\_**
+
+```{r}
+#| label: fig-trans_log
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-width: 6
+#| fig-height: 4
+#| fig-cap: "Curvas de Densidad de las medidas con transformación logaritmica"
+
+
+
+xdata  <- xdata %>% 
+  group_by(well) %>% 
+    mutate(log_RMED   = log(RMED+ 0.00001),
+         log_RSHA     = log(RSHA+ 0.00001),
+         log_RDEP     = log(RDEP+ 0.00001),
+         log_perm     = log(ed_perm + 0.00001), 
+         log_ind_perm = log(ed_ind_perm + 0.00001)
+         )  %>% 
+  ungroup()
+
+xdata %>% 
+  select(starts_with("log"), DEPT) %>% 
+  pivot_longer(-DEPT) %>% 
+  ggplot(aes(value))+
+  geom_density()+
+  facet_wrap(vars(name), scales = "free")+
+  theme_minimal()+
+  theme(axis.title = element_blank())
 ```
 
 ## Tendencia con profundidad
@@ -378,7 +448,28 @@ la_corr %>%
   fontsize(size = 6,part = "all") %>% 
   bold(bold = TRUE, part = "header") %>% 
   theme_alafoli() %>% 
-  hline(i = 8, part = "body",border = flextable::fp_border_default(width = .75, color = "red")) 
+  hline(i = 12, part = "body",border = flextable::fp_border_default(width = .75, color = "red")) 
+```
+
+```{r}
+#| label: fig-depth_trend
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-width: 8
+#| fig-height: 8
+#| fig-cap: "Exploración de tendencias lineales con profundidad"
+
+cont_trend %>% 
+  select(-c(well, fm,lith_name , x_loc, y_loc, z_loc, FORCE_2020_LITHOFACIES_LITHOLOGY, bit_size, )) %>% 
+  pivot_longer(-DEPT) %>% 
+  ggplot(aes( DEPT, value))+
+  geom_point()+
+  geom_smooth(method = "lm", color = "red", se = F)+
+  facet_wrap(vars(name), scale= "free")+
+  theme_minimal()
+
+  
 ```
 
 Vamos a crear variables con los residuales de un modelo lineal con la profundidad para las variables con un coeficiente de correlación de pearson de mas de 0.25, estas variables tendrán un prefijo de **re\_ .**
@@ -392,13 +483,18 @@ res_var <- la_corr %>%
 
 res_data <- cont_trend %>%
   select(well,DEPT, res_var$Curva) %>%
-  mutate(re_sp         = SP         - predict(lm(SP         ~ z_loc, data = cont_trend)),
-         re_gr         = GR         - predict(lm(GR         ~ z_loc, data = cont_trend)),
-         re_dtc        = DTC        - predict(lm(DTC        ~ z_loc, data = cont_trend)),
-         re_nphi       = NPHI       - predict(lm(NPHI       ~ z_loc, data = cont_trend)),
-         re_rhob_clean = rhob_clean - predict(lm(rhob_clean ~ z_loc, data = cont_trend)),
-         re_ed_denporo = ed_denporo - predict(lm(ed_denporo ~ z_loc, data = cont_trend)),
-         re_ed_phie    = ed_phie    - predict(lm(ed_phie    ~ z_loc, data = cont_trend)),
+  mutate(re_ed_denporo = ed_denporo   - predict(lm(ed_denporo ~ z_loc, data = cont_trend)),
+         re_nphi       = NPHI         - predict(lm(NPHI       ~ z_loc, data = cont_trend)),
+         re_z          = ed_z         - predict(lm(ed_z       ~ z_loc, data = cont_trend)),
+         re_log_perm   = log_perm     - predict(lm(log_perm   ~ z_loc, data = cont_trend)),
+         re_dtc        = DTC          - predict(lm(DTC        ~ z_loc, data = cont_trend)),
+         re_rhob_clean = rhob_clean   - predict(lm(rhob_clean ~ z_loc, data = cont_trend)),
+         re_gr         = GR           - predict(lm(GR         ~ z_loc, data = cont_trend)),
+         re_log_RSHA   = log_RSHA     - predict(lm(log_RSHA   ~ z_loc, data = cont_trend)),
+         re_perm       = ed_perm      - predict(lm(ed_perm    ~ z_loc, data = cont_trend)),
+         re_sp         = SP           - predict(lm(SP         ~ z_loc, data = cont_trend)),
+         re_phie       = ed_phie      - predict(lm(ed_phie    ~ z_loc, data = cont_trend)),
+         re_log_RMED   = log_RMED     - predict(lm(log_RMED   ~ z_loc, data = cont_trend)),
          ) %>% 
   select(well, DEPT,starts_with("re"))
 
@@ -413,9 +509,9 @@ res_data <- cont_trend %>%
 #| echo: false
 
 
-xdata <- cont_trend %>% select(-c(p5,p95)) %>% 
+xdata <- cont_trend  %>% 
   left_join(res_data, by = c("well", "DEPT"))
 
-write_rds(xdata, "../data/ing_var_v1.rds")
+# write_rds(xdata, "../data/ing_var_v1.rds")
 
 ```

@@ -56,6 +56,8 @@ Estas son algunas de las consideraciones principales que limitan nuestro estudio
 #| warning: false
 
 library(readr)
+library(DataExplorer)
+library(janitor)
 library(patchwork)
 library(ggeasy)
 library(SmartEDA)
@@ -284,6 +286,7 @@ En la siguiente gráfica observamos todos los pozos que tenemos a disposición y
 #| echo: false
 #| warning: false
 #| message: false
+#| 
 well_top_base_ss %>% 
   ggplot()+
   geom_path(aes(well_id, -value, group = well))+
@@ -295,7 +298,7 @@ well_top_base_ss %>%
   geom_line(data = top_brent_ss, aes(x=well_id,y= -z_loc), color = "darkgreen") +
   geom_line(data = base_brent_ss, aes(x=well_id, y= bas_brent_ss), color = "red") +
   geom_point(data = cored_brent, aes(x= well_id, y=-z_loc ),color = "purple")+
-  geom_label(aes(y=3100, x = 12, label = "Sección de pozo con núcleo"), color = "purple")+
+  geom_label(aes(y=3400, x = 12, label = "Sección de pozo con núcleo"), color = "purple")+
   geom_hline(yintercept = 3000, linetype = "dashed", color = "grey80")+
   geom_label(aes(x=25,y =3000, label= "3000 metros"), color = "grey50")+
   scale_y_reverse()+
@@ -303,7 +306,7 @@ well_top_base_ss %>%
   theme(legend.position = "none")
 ```
 
-En la @fig-xsection observamos que la media de profundidad de la formación esta cercana a los 3000 metros bajo el nivel del mar, además vemos que los
+En la @fig-xsection observamos que la media de profundidad de la formación esta cercana a los 3000 metros bajo el nivel del mar, además vemos que los núcleos estan aproximadamente a la misma profundidad y representan una proporcion baja de las muestras de la formacion Brent
 
 Comenzamos el análisis revisando el dataframe que hemos construido, con la librería @SmartEDA
 
@@ -320,9 +323,9 @@ brent <- logs_brent %>%
 ExpData(data=brent,type=1) %>% 
   flextable() %>% 
   autofit() %>% 
+  theme_alafoli() %>% 
   fontsize(size = 6,part = "all") %>% 
-  bold(bold = TRUE, part = "header") %>% 
-  theme_alafoli()
+  bold(bold = TRUE, part = "header")  
 ```
 
 Es claro que tenemos una gran cantidad de variable con menos de 50% de valores nulos y 2 con mas de 90% de valores nulos que debemos seguramente descartar.
@@ -341,9 +344,9 @@ ExpData(data=brent,type=2) %>%
   arrange(desc(Sample_n)) %>% 
   flextable() %>% 
   autofit() %>% 
+  theme_alafoli() %>% 
   fontsize(size = 6,part = "all") %>% 
   bold(bold = TRUE, part = "header") %>% 
-  theme_alafoli() %>% 
   hline(i = 22, part = "body",border = flextable::fp_border_default(width = .75, color = "red")) 
 ```
 
@@ -563,9 +566,9 @@ ExpNumStat(brent_qc3,Qnt = c(0.25,0.75), Outlier = TRUE) %>%
   arrange(Per_of_Missing) %>% 
   flextable() %>% 
   autofit() %>% 
+  theme_alafoli() %>% 
   fontsize(size = 6,part = "all") %>% 
-  bold(bold = TRUE, part = "header") %>% 
-  theme_alafoli()
+  bold(bold = TRUE, part = "header") 
   
 ```
 
@@ -581,7 +584,7 @@ El proceso de imputación lo vamos a enfrentar con varias estrategias distintas,
 
 #### Imputación de coordenadas:
 
-Las coordenadas de de la trajectoria de los pozos, en este caso **x_loc,** **y_loc y z_loc** tienen algunas medidas faltantes. En este caso ( y es común en la industria) son las mismas en las tres medidas. Esto sucede porque los sensores que determinan las coordenadas se encuentran detrás de la broca a cierta distancia y no siempre nos llega el resultado final con la estimación total de estas coordenadas. En este caso usamos la siguiente estrategia:
+Las coordenadas de de la trayectoria de los pozos, en este caso **x_loc,** **y_loc y z_loc** tienen algunas medidas faltantes. En este caso ( y es común en la industria) son las mismas en las tres medidas. Esto sucede porque los sensores que determinan las coordenadas se encuentran detrás de la broca a cierta distancia y no siempre nos llega el resultado final con la estimación total de estas coordenadas. En este caso usamos la siguiente estrategia:
 
 -   Coordenadas horizontales ( "**x_loc**" y "**y_loc**") asignamos el valor mas profundo registrado a las muestras con valores nulos. Considerando que todos los pozos son relativamente verticales y mas aún dentro de la formación de interés, esta es una buena aproximación como vemos en la @fig-coord_imput .
 
@@ -646,16 +649,14 @@ drho_impute_table
 
 ```
 
-En la @tbl-algo_imput presentamos los distintos métodos de imputación seleccionados para cada curva:
+En la @tbl-algo_imput presentamos los distintos métodos de imputación seleccionados para cada medida:
 
 ```{r}
 #| label: tbl-algo_imput
 #| echo: false
-#| fig-width: 8
-#| fig-height: 5
 #| warning: false
 #| message: false
-#| tbl-cap: "Estadísticas de las distribuciones obtenidas con los distintos métodos evaluados, en rojo se presentan las estadísticas originales, y en verde el método seleccionado en el caso de la desviación de la dinsidad."
+#| tbl-cap: "Algoritmos utilizados para imputar las distintas medidas"
 
 imput_algo <- read_rds("../data/imput_algo.rds")
 
@@ -664,9 +665,9 @@ imput_algo %>%
   rename(Algoritmo = "imput") %>%
   flextable() %>%
   autofit() %>%
+  theme_alafoli() %>% 
   fontsize(size = 8, part = "all") %>%
-  bold(bold = TRUE, part = "header") %>%
-  theme_alafoli()
+  bold(bold = TRUE, part = "header") 
 
 ```
 
@@ -686,24 +687,61 @@ Existen algunas relaciones conocidas que se utilizan mucho en el análisis de ya
 
 -   Curva de Permeabilidad utilizando la correlación de Timur @petrophy2017 **ed_perm**
 
-Adicionalmente si observamos la @fig-xsection es claro que tenemos un problema de muestreo en profundidad. La. profundidad normalmente tiene efectos en algunas de las mediciones que realizamos, por lo que hemos buscado las correlaciones existentes entre la profundidad bajo el nivel del mar y las distintas medidas. En los casos que encontramos cierto grado de correlación lineal hemos generado nuevas variables que contienen el residual obtenido al eliminar la tendencia identificada. Estas variables tienen el prefijo "**re\_**".
+-   Impedancia acústica, @acoustic es el producto de la velocidad sísmica y la densidad y normalemnte se denota con la letra Z, en este caso la llamaremos **ed_Z**. La velocidad sísmica es el inverso de la curva del sónico **DTC**.
+
+Adicionalmente si observamos la @fig-xsection es claro que el rango de profundidad en el que encontramos la formación es es bastante amplio, esto normalmente tiene efectos en algunas de las mediciones que realizamos, por lo que hemos buscado las correlaciones existentes entre la profundidad bajo el nivel del mar y las distintas medidas. En los casos que encontramos cierto grado de correlación lineal hemos generado nuevas variables que contienen el residual obtenido al eliminar la tendencia identificada. Estas variables tienen el prefijo "**re\_**".
 
 ### Visualización de los datos para el modelo predictivo
 
 Nos enfocaremos ahora en los datos que nos permiten construir el modelo. La variable objetivo es la variable **lith_name** que describe el tipo de roca en el núcleo.
 
 ```{r}
+#| label: tbl-core_size
+#| echo: false
+#| warning: false
+#| message: false
+#| tbl-cap: "secci'on de pozo con nucleo en metros."
 
 
-
-cored_brent %>% group_by(well) %>% 
-  summarise(seccion_con_nucleo = max(DEPT)- min(DEPT))
+cored_brent %>% group_by(well) %>%
+  summarise(seccion_con_nucleo = round(max(DEPT) - min(DEPT), 1)) %>%
+  arrange(desc(seccion_con_nucleo)) %>%
+  rename(pozo = well) %>% 
+  adorn_totals() %>% 
+  flextable() %>%
+  autofit() %>%
+  theme_alafoli() %>% 
+  fontsize(size = 12, part = "all") %>%
+  bold(bold = TRUE, part = "header") %>%
+  bold(i =6, bold = TRUE, part = "body")
 ```
 
-En la @fig-tipoderoca podemos ver que nuestro dataset es bastante desbalanceado, quizás el único punto que a priori no es tan malo es el hecho que sea el carbón la roca menos representada, ya que el carbón es particularmente distinto especialmente en lo que respecta a la densidad con respecto al resto de los tipos de roca que vamos a analizar.
+```{r}
+#| label: brent_seccion
+#| echo: false
+#| warning: false
+#| message: false
+
+
+seccion_brent <- 
+  logs_brent %>% group_by(well) %>%
+  select(well, brent, DEPT) %>% filter(brent == T) %>%
+  summarise(espesor_brent = max(DEPT) - min(DEPT)) %>%
+  ungroup() %>%
+  summarise(espesor_brent = sum(espesor_brent))
+
+
+```
+
+Tenemos un total de 840 metros de datos con núcleos lo cual representa un `r round(840 / seccion_brent[[1]] * 100,0)` % del los `r round(seccion_brent[[1]],0)` metros perforados de la formación Brent. Esto es un valor relativamente alto a los promedios de la industria que normalmente rondan el 5% .
+
+En la @fig-tipoderoca podemos ver que nuestro set de datos es bastante desbalanceado, comenzaremos analizando la distribución de las propiedades petrofísicas que afectan los volúmenes y la producción de petróleo. Porosidad y Permeabilidad.
 
 ```{r}
 #| label: fig-tipoderoca
+#| message: false
+#| warning: false
+#| echo: false
 #| fig-cap: "Descripción de los tipos de roca en los núcleos"
 #| fig-subcap:
 #|   - "Tipos de roca"
@@ -712,7 +750,7 @@ En la @fig-tipoderoca podemos ver que nuestro dataset es bastante desbalanceado,
 #| column: page-right
 
 # leemos los datos con ing de variables
-xdata <- read_rds("../data/ing_var_v1.rds") %>% select(-FORCE_2020_LITHOFACIES_LITHOLOGY)
+xdata <- read_rds("../data/ing_var_v1.rds") %>% select(-c(FORCE_2020_LITHOFACIES_LITHOLOGY, p5, p95))
 
 # seleccionamos solo la seccion con datos de nucleo
 xcore <- cored_brent %>% 
@@ -729,7 +767,8 @@ xcore %>% count(lith_name) %>%
   theme_alafoli()
 
 
-xcore %>% count(lith_name) %>% 
+xcore %>% 
+  count(lith_name) %>% 
   ggplot(aes(lith_name, n))+
   geom_bar(stat = "identity")+
   theme_minimal()+
@@ -739,5 +778,181 @@ xcore %>% count(lith_name) %>%
 
 
 ```
+
+```{r}
+#| label: fig-poroperm
+#| message: false
+#| warning: false
+#| echo: false
+#| fig-cap: "Porosidad y Permeabilidad en los núcleos por tipo de roca"
+#| fig-subcap:
+#|   - "Curva de dendsidad de la porosidad por tipo de roca"
+#|   - "Curva de densidad de la permeabilidad por tipo de roca" 
+#| layout-ncol: 2
+#| column: page-right
+xcore %>% 
+  ggplot(aes(ed_denporo, color = lith_name))+
+  geom_density()+
+  theme_minimal()+
+  labs(color = "tipo de roca")+
+  theme(axis.title.y = element_blank())
+
+xcore %>% 
+  ggplot(aes(ed_perm, color = lith_name))+
+  geom_density()+
+  theme_minimal()+
+  labs(color = "tipo de roca")+
+  scale_x_log10()+
+  theme(axis.title.y = element_blank())
+
+```
+
+De los gráficos confirmamos que el des-balance de muestras nos puede generar problemas a futuro, y problemas relacionados a la predicción de la producción , ya que tenemos mucho solapamiento de las distribuciones de todos los tipos de roca, siendo el Carbón el que mayor diferenciación presenta en estos espacios.
+
+A Continuación vamos a revisar la relación de todas las variables continuas con los tipos de roca, en general las curvas de resistividad y de permeabilidad tienen comportamientos logarítmicos por lo que vamos a transformar para la visualización las variables mencionadas al espacio logarítmico, las variables relacionadas con las coordenadas de pozo las vamos a eliminar de la comparación ya que no tiene sentido considerarlas en estos gráficos, así como el tamaño de broca (**bit_size**).
+
+```{r}
+#| label: fig-boxplot_train
+#| message: false
+#| warning: false
+#| fig-width: 10
+#| fig-height: 10
+#| echo: false
+#| fig-cap: "Descripción de los tipos de roca en los núcleos"
+
+xcore %>% 
+  select(lith_name, where(is.numeric), -c(DEPT, x_loc,y_loc, z_loc, bit_size) ) %>%
+  pivot_longer(-lith_name) %>% 
+  ggplot(aes(value, color = lith_name))+
+  geom_boxplot() +
+  facet_wrap(vars(name), scales = "free")+
+  theme_minimal()+
+  labs(color = "tipo de roca")+
+  theme(axis.text.y = element_blank(),
+        axis.title.y = element_blank(),
+        legend.position = "bottom")
+  
+  
+```
+
+En general se observan cosas interesantes, de los mas importantes:
+
+-   La curva del neutrón (NPHI) parece poder separar bien los tipos de roca con poco solapamiento entre los distintos valores.
+
+-   la combinación de la medida de los rayos gamma normalizado (ed_gr_norm) y el sin normalizar (GR) se complementan para permitir buscar un espacio que permita la identificación de los distintos tipos de roca.
+
+visualizamos antes de continuar un gráfico de coeficiente de correlación de todas las variables
+
+```{r}
+#| label: fig-corr_plot
+#| message: false
+#| warning: false
+#| fig-width: 10
+#| fig-height: 10
+#| echo: false
+#| fig-cap: "Descripción de los tipos de roca en los núcleos"
+plot_correlation(xcore %>% select(-c(well, x_loc, y_loc, z_loc, bit_size, DEPT)))
+```
+
+Es claro que algunas transformaciones mantienen una alta correlación lineal con la variable inicial, como es el caso de la porosidad y la densidad, también tenemos alta correlación entre las distintas resistividades, será interesante observar cuales de estas variables mantenemos después de un ejercicio de selección de variables tipo *stepwise*.
+
+```{r}
+#| label: fig-barplot_formation
+#| #| message: false
+#| warning: false
+#| fig-width: 8
+#| fig-height: 10
+#| echo: false
+#| fig-cap: "Descripción de los tipos de roca en los núcleos"
+
+
+xcore %>% 
+  ggplot(aes(lith_name, fill = fm))+
+  geom_bar()+
+  theme_minimal()+
+  theme(axis.title.y = element_blank())
+```
+
+Aunque las muestras están lejos de ser exhaustivas vemos que en principio deberiamos esperar Carbon (Coal) solamente en la formación Tarbert, así como es poco probable que encontremos esquistos o **shale** en la formación Tarbert.
+
+```{r}
+#| label: fig-barplot_bit_size
+#| #| message: false
+#| warning: false
+#| fig-width: 8
+#| fig-height: 10
+#| echo: false
+#| fig-cap: "Descripción de los tipos de roca en los núcleos"
+#| 
+xcore %>% 
+  ggplot(aes(lith_name, fill = as.factor(bit_size)))+
+  geom_bar()+
+  theme_minimal()+
+  theme(axis.title = element_blank(),
+        )+
+  labs(fill = "tamaño de ebroca") 
+```
+
+La medida de el tamaño de broca lo vamos a descartar básicamente porque es una decisión que no se ve afectada por el tipo de roca que tenemos,es una decisión económica que depende del objetivo final del pozo.
+
+```{r}
+#| label: fig-barplot_disc
+#| #| message: false
+#| warning: false
+#| fig-width: 8
+#| fig-height: 10
+#| echo: false
+#| fig-cap: "Descripción de los tipos de roca en los núcleos"
+#| 
+
+
+
+plot_bar(xcore %>% mutate(bit_size =  as.factor(bit_size)), by= "lith_name",ggtheme = theme_minimal())
+
+
+```
+
+```{r}
+
+```
+
+```{r}
+#| label: fig-normal
+#| message: false
+#| warning: false
+#| echo: false
+#| fig-cap: "qq-plot de todas las variables continuas"
+#| fig-subcap:
+#|   - "Curva de dendsidad de la porosidad por tipo de roca"
+#|   - "Curva de densidad de la permeabilidad por tipo de roca"
+#|   -  "hola" 
+#| layout-ncol: 1
+#| column: page-right
+
+  
+
+
+DataExplorer::plot_qq(xcore[,c("re_nphi", "re_phie", "re_ed_denporo", "re_rhob_clean", "re_dtc", "re_gr", "re_sp", "log_perm", "ed_perm", "re_sp","log_ind_perm", "ed_ind_perm", "ed_phie", "ed_denporo", "ed_vsh", "ed_gr_norm", "rhob_clean", "NPHI", "DTC", "log_RSHA", "RSHA", "log_RDEP","RDEP", "CALI", "GR", "bit_size", "pef_clean", "DRHO", "SP", "log_RMED", "RMED")],ggtheme = theme_minimal())
+
+
+
+```
+
+Es claro que la transformación que aplicamos sobre las medidas de resistividad y permeabilidad han funcionado para obtener distribuciones de los datos que se aproximan a una distribución normal.
+
+## Selección de Variables
+
+```{r}
+#| label: export
+#| message: false
+#| warning: false
+#| echo: false
+
+write_rds(xcore, "../data/xcore.rds")
+```
+
+HEmos realizado. el proceso de Stepwise para explorar diversos conjuntos de variables que nos permitan evaluar grupos de algoritmos.
+
+Modelo
 
 ## References

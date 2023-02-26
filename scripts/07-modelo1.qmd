@@ -1,0 +1,20 @@
+---
+title: "modelos"
+format: docx
+editor: visual
+---
+
+```{r}
+#| label: librerias
+#| message: false
+#| warning: false
+#| echo: false
+#| 
+library(MASS)
+library(nnet)
+library(Boruta)
+library(caret)
+library(flextable)
+library(tidymodels)
+library(tidyverse) 
+```
