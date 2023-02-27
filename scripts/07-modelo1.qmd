@@ -2,7 +2,10 @@
 title: "modelos"
 format: docx
 editor: visual
+bibliography: references.bib
 ---
+
+Comenzamos cargando los datos de los núcleos
 
 ```{r}
 #| label: librerias
@@ -10,11 +13,759 @@ editor: visual
 #| warning: false
 #| echo: false
 #| 
-library(MASS)
-library(nnet)
-library(Boruta)
-library(caret)
+
 library(flextable)
 library(tidymodels)
 library(tidyverse) 
+library(ranger)
+
+set_flextable_defaults(fonts_ignore=TRUE)
+
+library(parallel)
+library(doParallel)
+cluster <- makeCluster(detectCores() - 1)
+registerDoParallel(cluster)
+
+flex_fun <- function(df) {
+  df %>% 
+    flextable() %>% 
+  theme_alafoli() %>% 
+  bold(part = "header") %>% 
+  autofit()
+}
+
+```
+
+```{r}
+#| label: loaddata
+#| message: false
+#| warning: false
+#| echo: false
+
+
+xcore <- read_rds("../data/xcore.rds") %>% dplyr::select(-c(fm, bit_size))
+xcore$lith_name <- as.factor(xcore$lith_name) 
+
+
+xcore <- xcore %>% 
+  relocate(lith_name, .before = well)
+
+```
+
+Separamos los datos en training y testing, considerando que el set de datos no es muy grande vamos a utilizar 70/30 como la relación de datos para antrenamiento y para testing. Ademas estratificamos el split con la la variable objetivo (**lith_name**).
+
+```{r}
+#| label: train_test
+#| message: false
+#| warning: false
+#| echo: true
+
+
+set.seed(123) 
+xcore_split <- initial_split(xcore, prop = 0.7, strata = lith_name) # 70% training, 30% testing
+
+# extract the training and testing sets
+xcore_tr <- training(xcore_split)
+xcore_te <-   testing(xcore_split)
+
+xcore_train <- xcore_tr %>%  dplyr::select(-well)
+xcore_test <- xcore_te %>%  dplyr::select(-well)
+
+write_rds(xcore_train, "../data/modelos/00_xcore_train.rds")
+write_rds(xcore_test, "../data/modelos/00_xcore_test.rds")
+```
+
+### Modelo simple
+
+utilizaremos de la librería @parsnip el algoritmo **multinom_reg** que define un modelo que usa predictores lineales para predecir multiclases utilizando la distribución multinomial. La libreria tiene un parametro tuneable que describe el nivel de regularización, este valor lo asmiremos constante con el valor de 1.
+
+```{r}
+#| label: model1
+#| message: false
+#| warning: false
+#| echo: true
+
+# definimos la especificación del algoritmo
+multireg_spec <- multinom_reg(penalty = 1) %>%
+  set_engine("nnet") %>%
+  set_mode("classification")
+
+# entrenamos el modelo
+set.seed(2056)
+multireg_fit <- multireg_spec %>% 
+  fit(lith_name ~ ., data = xcore_train)
+
+
+```
+
+Con el modelo ajustado podemos probarlo en los datos de test.
+
+```{r}
+#| label: pred_test
+#| 
+# Make predictions for the test set
+xcore_results <- xcore_test %>% select(lith_name) %>% 
+  bind_cols(multireg_fit %>% 
+              predict(new_data = xcore_test)) %>% 
+  bind_cols(multireg_fit %>% 
+              predict(new_data = xcore_test, type = "prob"))
+
+# Print predictions
+xcore_results %>% 
+  slice_head(n = 5) %>% 
+  flextable() %>% 
+  autofit() %>% 
+  theme_alafoli()
+```
+
+Revisamos la matriz de confusión:
+
+```{r}
+#| label: conf_m_plot
+#| 
+update_geom_defaults(geom = "tile", new = list(color = "black", alpha = 0.7))
+# Visualizamos la matriz de confusion
+xcore_results %>% 
+  conf_mat(lith_name, .pred_class) %>% 
+  autoplot(type = "heatmap")
+```
+
+Vemos que nuestro modelo tiene problemas en la descripción del Sandstone/Shale, pero en general tenemos un comportamiento que parece razonable. A continuación presentamos la tabla con metricas de la calidad del modelo, son metricas estimadas sobre como el modelo funciona
+
+```{r}
+# Statistical summaries for the confusion matrix
+conf_mat(data = xcore_results, truth = lith_name, estimate = .pred_class) %>% 
+  summary() %>% flextable() %>% autofit() %>% theme_alafoli()
+```
+
+Revisamos la curva de ROC para cada tipo de roca y confirmamos que para sand/shale es el caso donde el modelo tiene mas problemas.
+
+```{r}
+# Curva ROC
+xcore_results %>% 
+  roc_curve(lith_name, c(.pred_Coal, .pred_Limestone, 
+                         .pred_Sandstone,
+                         `.pred_Sandstone/Shale`,
+                         .pred_Shale
+                         )) %>% 
+  ggplot(aes(x = 1 - specificity, y = sensitivity, color = .level)) +
+  geom_abline(lty = 2, color = "gray80", size = 0.9) +
+  geom_path(show.legend = T, alpha = 0.6, size = 1.2) +
+  coord_equal()+
+  theme_minimal()+
+  labs(color = "tipos de roca")
+```
+
+```{r}
+las_metricas <- metric_set(roc_auc, 
+                                    accuracy,kap,sens)
+
+```
+
+## Modelo Random forest con todas las variables disponibles.
+
+Utilizaremos Random Forest de la librería @Ranger, vamos a correrlo sobre todos los datos, a los cuales vamos a normalizar, eliminaremos las variables con zero varianza y las
+
+```{r}
+# Definimos el recipe
+base_rec <-
+  recipe(lith_name ~ . , data = xcore_train) %>%
+  step_normalize(all_numeric_predictors()) %>%
+  step_nzv() %>% 
+  step_corr(all_numeric_predictors(), threshold = .7) 
+
+rand_forest_spec <-
+  rand_forest(mtry = tune(), min_n = tune() )%>%
+  set_engine('ranger' ) %>%
+  set_mode('classification')
+
+
+rf_workflow<-
+  workflow() %>% 
+  add_recipe(base_rec) %>% 
+  add_model(rand_forest_spec) 
+
+
+wflow_param <-
+  rf_workflow %>% 
+  extract_parameter_set_dials() %>% 
+  finalize(xcore_train)
+
+
+
+```
+
+### **Hyperparámetros**
+
+Tidymodels permite hacer una selección automática de los rangos a evaluar de los hyperparámetros que vamos a "tunear", los revisaremos y ajustaremos en los casos que sea necesario.
+
+Revisamos los rangos para **mtry**:
+
+```{r}
+wflow_param %>% extract_parameter_dials("mtry")
+```
+
+```{r}
+wflow_param %>% extract_parameter_dials("min_n")
+```
+
+Mantenemos los valores estimados y construimos una malla que cubre todas las combinaciones posibles de los hyperparametros y lo visualizamos en la @fig-rf_grid
+
+```{r}
+#| message: false
+#| warning: false
+#| label: fig-rf_grid
+#| fig-cap: malla de hyperparametros en Random Forests
+la_malla <-
+  wflow_param %>%
+  grid_regular(levels = c(mtry = 9, min_n = 10))
+
+la_malla %>%
+  ggplot(aes(mtry, min_n)) +
+  geom_point()+
+  theme_bw()
+```
+
+Para tunear corremos el validación cruzada de 5 con 5 repeticiones.
+
+```{r}
+#| label: rf_tune
+#| message: false
+#| echo: false
+# 
+# set.seed(123)
+# 
+# step_fold <- vfold_cv(xcore_train, v=5, repeats = 5, strata = lith_name)
+# 
+# random_forest_initial <-
+#   rf_workflow %>%
+#   tune_grid(resamples = step_fold, grid = la_malla, metrics = las_metricas )
+
+# write_rds(random_forest_initial, "../data/modelos/05_tuned_rf.rds")
+```
+
+```{r}
+random_forest_initial <- read_rds("../data/modelos/05_tuned_rf.rds")
+```
+
+```{r}
+#| label: tbl-rf_met
+#| message: false
+#| warning: false
+#| tbl-cap: Resumen de las metricas del tuning de Random Forest
+
+rf_tune_metrics <- random_forest_initial %>% collect_metrics() 
+rf_tune_metrics <- unique(rf_tune_metrics$.metric)
+
+for (i in 1:length(rf_tune_metrics)) {
+  temp <- random_forest_initial %>% select_best(rf_tune_metrics[i])%>%
+    mutate(metrica = rf_tune_metrics[i])
+  if (i==1) {
+    model_metric <- temp 
+  } else {
+    model_metric <- model_metric %>% rbind(temp)
+  }
+}
+
+model_metric %>% flex_fun()
+```
+
+Vemos que obtenemos la misma configuración de hyperparametros para todas las métricas, por lo que continuaremos con los mas comunes. para facilidad del proceso escogemos los hyperparametros correspondiente al **accuracy**.
+
+```{r}
+#| message: false
+#| warning: false
+#| label: fig-rf_metric
+#| fig-cap: evolumcion del tuning con Random Forest
+random_forest_initial %>%
+  collect_metrics() %>%
+  filter(.metric == "accuracy") %>%
+  mutate(min_n = factor(min_n)) %>%
+  ggplot(aes(mtry, mean, color = min_n)) +
+  geom_line(alpha = 0.5, size = 1.5) +
+  geom_point() +
+  labs(y = "accuracy",
+       title="Random forest hyper parameter tuning ",
+       subtitle = "Accuracy"
+       
+       )+
+  theme_bw()
+```
+
+```{r}
+#| label: best_rf_model
+best_acc <- select_best(random_forest_initial,metric =  "accuracy")
+
+final_rf <- finalize_model(
+  rand_forest_spec,
+  best_acc
+)
+
+
+
+# Finalize the model
+fit_final_rf <- rf_workflow %>%
+  finalize_workflow(select_best(random_forest_initial,metric ="accuracy") ) %>%
+  fit(xcore_train)
+
+# write_rds(fit_final_rf, "../data/modelos/05_01_best_rf.rds")
+```
+
+La siguiente tabla que construimos con la librería @VIP87 nos muestra la importancia de las variables en el modelo. Es claro que el l**XXXXXXXXXXXXXX**es la variable que mayor aporta información al modelo. Por otro lado es claro que las ultimas dos variables prácticamente no aportan nada.
+
+```{r}
+#| message: false
+#| warning: false
+#| label: fig-rf_vars
+#| fig-cap: Importancia de variables con Random Forest
+
+library(vip)
+
+final_rf %>%
+  set_engine("ranger", importance = "permutation") %>%
+  fit(lith_name ~ .,
+    data = juice(prep(base_rec))
+  ) %>%
+  vip(geom = "point", aesthetics = list(color = "red", size = 4))+
+  theme_bw()
+```
+
+Este primer modelo es interesante, le hemos dejado a propósito todas las variables, y nos sorprende que las coordenadas de posición tengan alta influencia, vamos a hacer un ejemplo adicional eliminando estas coordenadas para observar el comportamiento, especialmente sobre la data de test.
+
+```{r}
+#| label: pred_test_rf
+#| 
+# Make predictions for the test set
+xcore_results <- xcore_test %>% select(lith_name) %>% 
+  bind_cols(fit_final_rf %>% 
+              predict(new_data = xcore_test)) %>% 
+  bind_cols(fit_final_rf %>% 
+              predict(new_data = xcore_test, type = "prob"))
+
+# Print predictions
+xcore_results %>% 
+  slice_head(n = 5) %>% 
+  flextable() %>% 
+  autofit() %>% 
+  theme_alafoli()
+```
+
+Revisamos la matriz de confusión:
+
+```{r}
+#| label: conf_m_plot
+#| 
+update_geom_defaults(geom = "tile", new = list(color = "black", alpha = 0.7))
+# Visualizamos la matriz de confusion
+xcore_results %>% 
+  conf_mat(lith_name, .pred_class) %>% 
+  autoplot(type = "heatmap")
+```
+
+Vemos que nuestro modelo tiene problemas en la descripción del Sandstone/Shale, pero en general tenemos un comportamiento que parece razonable. A continuación presentamos la tabla con metricas de la calidad del modelo, son metricas estimadas sobre como el modelo funciona
+
+```{r}
+# Statistical summaries for the confusion matrix
+conf_mat(data = xcore_results, truth = lith_name, estimate = .pred_class) %>% 
+  summary() %>% flextable() %>% autofit() %>% theme_alafoli()
+```
+
+Revisamos la curva de ROC para cada tipo de roca y confirmamos que para sand/shale es el caso donde el modelo tiene mas problemas.
+
+```{r}
+# Curva ROC
+xcore_results %>% 
+  roc_curve(lith_name, c(.pred_Coal, .pred_Limestone, 
+                         .pred_Sandstone,
+                         `.pred_Sandstone/Shale`,
+                         .pred_Shale
+                         )) %>% 
+  ggplot(aes(x = 1 - specificity, y = sensitivity, color = .level)) +
+  geom_abline(lty = 2, color = "gray80", size = 0.9) +
+  geom_path(show.legend = T, alpha = 0.6, size = 1.2) +
+  coord_equal()+
+  theme_minimal()+
+  labs(color = "tipos de roca")
+```
+
+## Modelo de random forest sin coordenadas de posicion
+
+```{r}
+# Definimos el recipe
+
+los_datos <- xcore_train %>% select(-c(x_loc, y_loc, z_loc,DEPT))
+
+base_rec <-
+  recipe(lith_name ~ . , data = los_datos ) %>%
+  step_normalize(all_numeric_predictors()) %>%
+  step_nzv() %>% 
+  step_corr(all_numeric_predictors(), threshold = .7) 
+
+rand_forest_spec <-
+  rand_forest(mtry = tune(), min_n = tune() )%>%
+  set_engine('ranger' ) %>%
+  set_mode('classification')
+
+
+rf_workflow<-
+  workflow() %>% 
+  add_recipe(base_rec) %>% 
+  add_model(rand_forest_spec) 
+
+
+wflow_param <-
+  rf_workflow %>% 
+  extract_parameter_set_dials() %>% 
+  finalize(los_datos)
+
+
+
+```
+
+### Hyperparámetros
+
+Revisamos los rangos para **mtry**:
+
+```{r}
+wflow_param %>% extract_parameter_dials("mtry")
+```
+
+```{r}
+wflow_param %>% extract_parameter_dials("min_n")
+```
+
+Mantenemos los valores estimados y construimos una malla que cubre todas las combinaciones posibles de los hyperparametros.
+
+```{r}
+
+#Definimos los hyper parametros
+
+# la_malla <-
+#   wflow_param %>%
+#   grid_regular(levels = c(mtry = 9, min_n = 10))
+# 
+# set.seed(123)
+# 
+# step_fold <- vfold_cv(los_datos, v=5, repeats = 5, strata = lith_name)
+# 
+# random_forest_no_coord <-
+#   rf_workflow %>%
+#   tune_grid(resamples = step_fold, grid = la_malla, metrics = las_metricas )
+
+# write_rds(random_forest_no_coord, "../data/modelos/05_tuned_rf_no_coord.rds")
+random_forest_no_coord<-  read_rds("../data/modelos/05_tuned_rf_no_coord.rds")
+```
+
+```{r}
+#| message: false
+#| warning: false
+#| label: fig-rf_metric
+#| fig-cap: evolumcion del tuning con Random Forest
+random_forest_no_coord %>%
+  collect_metrics() %>%
+  filter(.metric == "accuracy") %>%
+  mutate(min_n = factor(min_n)) %>%
+  ggplot(aes(mtry, mean, color = min_n)) +
+  geom_line(alpha = 0.5, size = 1.5) +
+  geom_point() +
+  labs(y = "accuracy",
+       title="Random forest hyper parameter tuning ",
+       subtitle = "Accuracy"
+       
+       )+
+  theme_bw()
+```
+
+```{r}
+#| label: best_rf_model2
+best_acc <- select_best(random_forest_no_coord,metric =  "accuracy")
+
+final_rf2 <- finalize_model(
+  rand_forest_spec,
+  best_acc
+)
+
+
+
+# Finalize the model
+fit_final_rf2 <- rf_workflow %>%
+  finalize_workflow(select_best(random_forest_no_coord,metric ="accuracy") ) %>%
+  fit(los_datos)
+
+write_rds(fit_final_rf2, "../data/modelos/05_01_best_rf2.rds")
+```
+
+La siguiente tabla que construimos con la librería @VIP87 nos muestra la importancia de las variables en el modelo. Es claro que el l**XXXXXXXXXXXXXX**es la variable que mayor aporta información al modelo. Por otro lado es claro que las ultimas dos variables prácticamente no aportan nada.
+
+```{r}
+#| message: false
+#| warning: false
+#| label: fig-rf_vars2
+#| fig-cap: Importancia de variables con Random Forest
+
+library(vip)
+
+final_rf2 %>%
+  set_engine("ranger", importance = "permutation") %>%
+  fit(lith_name ~ .,
+    data = juice(prep(base_rec))
+  ) %>%
+  vip(geom = "point", aesthetics = list(color = "red", size = 4))+
+  theme_bw()
+```
+
+Este primer modelo es interesante, le hemos dejado a propósito todas las variables, y nos sorprende que las coordenadas de posición tengan alta influencia, vamos a hacer un ejemplo adicional eliminando estas coordenadas para observar el comportamiento, especialmente sobre la data de test.
+
+```{r}
+#| label: pred_test_rf2
+#| 
+# Make predictions for the test set
+xcore_results <- xcore_test %>% select(lith_name) %>% 
+  bind_cols(fit_final_rf2 %>% 
+              predict(new_data = xcore_test)) %>% 
+  bind_cols(fit_final_rf2 %>% 
+              predict(new_data = xcore_test, type = "prob"))
+
+# Print predictions
+xcore_results %>% 
+  slice_head(n = 5) %>% 
+  flextable() %>% 
+  autofit() %>% 
+  theme_alafoli()
+```
+
+Revisamos la matriz de confusión:
+
+```{r}
+#| label: conf_m_plot2
+#| 
+update_geom_defaults(geom = "tile", new = list(color = "black", alpha = 0.7))
+# Visualizamos la matriz de confusion
+xcore_results %>% 
+  conf_mat(lith_name, .pred_class) %>% 
+  autoplot(type = "heatmap")
+```
+
+Vemos que nuestro modelo tiene problemas en la descripción del Sandstone/Shale, pero en general tenemos un comportamiento que parece razonable. A continuación presentamos la tabla con metricas de la calidad del modelo, son metricas estimadas sobre como el modelo funciona
+
+```{r}
+# Statistical summaries for the confusion matrix
+conf_mat(data = xcore_results, truth = lith_name, estimate = .pred_class) %>% 
+  summary() %>% flextable() %>% autofit() %>% theme_alafoli()
+```
+
+Revisamos la curva de ROC para cada tipo de roca y confirmamos que para sand/shale es el caso donde el modelo tiene mas problemas.
+
+```{r}
+# Curva ROC
+xcore_results %>% 
+  roc_curve(lith_name, c(.pred_Coal, .pred_Limestone, 
+                         .pred_Sandstone,
+                         `.pred_Sandstone/Shale`,
+                         .pred_Shale
+                         )) %>% 
+  ggplot(aes(x = 1 - specificity, y = sensitivity, color = .level)) +
+  geom_abline(lty = 2, color = "gray80", size = 0.9) +
+  geom_path(show.legend = T, alpha = 0.6, size = 1.2) +
+  coord_equal()+
+  theme_minimal()+
+  labs(color = "tipos de roca")
+```
+
+## Modelo Random Forest con PCA
+
+Vamos a agregar una transformación de PCA, y vamos a tunear el numero de componentes
+
+## 
+
+```{r}
+# Definimos el recipe
+
+los_datos <- xcore_train %>% select(-c(x_loc, y_loc, z_loc,DEPT))
+
+base_rec <-
+  recipe(lith_name ~ . , data = los_datos ) %>%
+  step_normalize(all_numeric_predictors()) %>%
+  step_nzv() %>% 
+  step_corr(all_numeric_predictors(), threshold = .7) %>% 
+  step_pca(num_comp = tune())
+
+rand_forest_spec <-
+  rand_forest(mtry = tune(), min_n = tune() )%>%
+  set_engine('ranger' ) %>%
+  set_mode('classification')
+
+
+rf_workflow<-
+  workflow() %>% 
+  add_recipe(base_rec) %>% 
+  add_model(rand_forest_spec) 
+
+
+wflow_param <-
+  rf_workflow %>% 
+  extract_parameter_set_dials() %>%
+  update(num_comp = num_comp(c(0,16))) %>% 
+  finalize(los_datos) 
+
+
+
+```
+
+### Hyperparámetros
+
+Revisamos los rangos para **mtry**:
+
+```{r}
+wflow_param %>% extract_parameter_dials("mtry")
+```
+
+```{r}
+wflow_param %>% extract_parameter_dials("min_n")
+```
+
+```{r}
+wflow_param %>% extract_parameter_dials("num_comp")
+```
+
+Mantenemos los valores estimados y construimos una malla que cubre todas las combinaciones posibles de los hyperparametros.
+
+```{r}
+
+#Definimos los hyper parametros
+
+
+
+set.seed(123)
+
+step_fold <- vfold_cv(los_datos, v=5, repeats = 5, strata = lith_name)
+
+random_forest_pca <-
+  rf_workflow %>%
+  tune_grid(resamples = step_fold, grid = wflow_param %>% grid_regular(levels = 9), metrics = las_metricas )
+
+write_rds(random_forest_pca, "../data/modelos/05_tuned_rf_pca.rds")
+# random_forest_pca<-  read_rds("../data/modelos/05_tuned_rf_pca.rds")
+```
+
+```{r}
+#| message: false
+#| warning: false
+#| label: fig-rf_metricpca
+#| fig-cap: evolucion del tuning con Random Forest
+random_forest_pca %>%
+  collect_metrics() %>%
+  filter(.metric == "accuracy") %>%
+  mutate(min_n = factor(min_n)) %>%
+  ggplot(aes(mtry, mean, color = min_n)) +
+  geom_line(alpha = 0.5, size = 1.5) +
+  geom_point() +
+  labs(y = "accuracy",
+       title="Random forest hyper parameter tuning ",
+       subtitle = "Accuracy"
+       
+       )+
+  theme_bw()
+```
+
+```{r}
+#| label: best_rf_model3
+best_acc <- select_best(random_forest_pca,metric =  "accuracy")
+
+final_rf3 <- finalize_model(
+  rand_forest_spec,
+  best_acc
+)
+
+
+
+# Finalize the model
+fit_final_rf3 <- rf_workflow %>%
+  finalize_workflow(select_best(random_forest_pca,metric ="accuracy") ) %>%
+  fit(los_datos)
+
+write_rds(fit_final_rf3, "../data/modelos/05_01_best_rf3.rds")
+```
+
+La siguiente tabla que construimos con la librería @VIP87 nos muestra la importancia de las variables en el modelo. Es claro que el l**XXXXXXXXXXXXXX**es la variable que mayor aporta información al modelo. Por otro lado es claro que las ultimas dos variables prácticamente no aportan nada.
+
+```{r}
+#| message: false
+#| warning: false
+#| label: fig-rf_vars3
+#| fig-cap: Importancia de variables con Random Forest
+
+library(vip)
+
+final_rf3 %>%
+  set_engine("ranger", importance = "permutation") %>%
+  fit(lith_name ~ .,
+    data = juice(prep(base_rec))
+  ) %>%
+  vip(geom = "point", aesthetics = list(color = "red", size = 4))+
+  theme_bw()
+```
+
+Este primer modelo es interesante, le hemos dejado a propósito todas las variables, y nos sorprende que las coordenadas de posición tengan alta influencia, vamos a hacer un ejemplo adicional eliminando estas coordenadas para observar el comportamiento, especialmente sobre la data de test.
+
+```{r}
+#| label: pred_test_rf3
+#| 
+# Make predictions for the test set
+xcore_results <- xcore_test %>% select(lith_name) %>% 
+  bind_cols(fit_final_rf3 %>% 
+              predict(new_data = xcore_test)) %>% 
+  bind_cols(fit_final_rf3 %>% 
+              predict(new_data = xcore_test, type = "prob"))
+
+# Print predictions
+xcore_results %>% 
+  slice_head(n = 5) %>% 
+  flextable() %>% 
+  autofit() %>% 
+  theme_alafoli()
+```
+
+Revisamos la matriz de confusión:
+
+```{r}
+#| label: conf_m_plot3
+#| 
+update_geom_defaults(geom = "tile", new = list(color = "black", alpha = 0.7))
+# Visualizamos la matriz de confusion
+xcore_results %>% 
+  conf_mat(lith_name, .pred_class) %>% 
+  autoplot(type = "heatmap")
+```
+
+Vemos que nuestro modelo tiene problemas en la descripción del Sandstone/Shale, pero en general tenemos un comportamiento que parece razonable. A continuación presentamos la tabla con metricas de la calidad del modelo, son metricas estimadas sobre como el modelo funciona
+
+```{r}
+# Statistical summaries for the confusion matrix
+conf_mat(data = xcore_results, truth = lith_name, estimate = .pred_class) %>% 
+  summary() %>% flextable() %>% autofit() %>% theme_alafoli()
+```
+
+Revisamos la curva de ROC para cada tipo de roca y confirmamos que para sand/shale es el caso donde el modelo tiene mas problemas.
+
+```{r}
+# Curva ROC
+xcore_results %>% 
+  roc_curve(lith_name, c(.pred_Coal, .pred_Limestone, 
+                         .pred_Sandstone,
+                         `.pred_Sandstone/Shale`,
+                         .pred_Shale
+                         )) %>% 
+  ggplot(aes(x = 1 - specificity, y = sensitivity, color = .level)) +
+  geom_abline(lty = 2, color = "gray80", size = 0.9) +
+  geom_path(show.legend = T, alpha = 0.6, size = 1.2) +
+  coord_equal()+
+  theme_minimal()+
+  labs(color = "tipos de roca")
+```
+
+## 
+
+```{r}
+stopCluster(cluster)
 ```

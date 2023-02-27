@@ -91,3 +91,45 @@ aml@leaderboard %>% as_tibble() %>% flextable() %>%
   autofit() %>% 
   theme_alafoli()
 ```
+
+```{r}
+library(h2o)
+
+# Load the data
+data <- h2o.importFile("path/to/numeric/data.csv")
+
+split <- h2o.splitFrame(data, ratios = c(0.8, 0.2), seed = 123)
+train <- split[[1]]
+valid <- split[[2]]
+
+hyper_params <- list(ntrees = c(50, 100, 200),
+                     max_depth = c(10, 20, 30),
+                     min_rows = c(1, 5, 10),
+                     sample_rate = c(0.7, 0.8, 0.9))
+
+# Create a grid of hyperparameters
+grid <- h2o.grid(algorithm = "randomForest",
+                 x = names(data)[1:ncol(data)-1],
+                 y = names(data)[ncol(data)],
+                 training_frame = train,
+                 validation_frame = valid,
+                 hyper_params = hyper_params,
+                 search_criteria = list(strategy = "RandomDiscrete", max_models = 10, seed = 123))
+
+
+# Retrieve the best model
+best_model <- h2o.getGrid("randomForest_grid", sort_by = "auc", decreasing = TRUE)[[1]]
+
+
+
+# Evaluate the performance of the best model
+perf <- h2o.performance(best_model, valid)
+h2o.auc(perf)
+h2o.accuracy(perf)
+h2o.precision(perf)
+h2o.recall(perf)
+h2o.f1(perf)
+
+
+
+```

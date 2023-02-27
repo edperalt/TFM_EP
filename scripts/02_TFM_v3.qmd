@@ -230,7 +230,7 @@ Una de las particularidades que tenemos en este tipo de problemas es la cantidad
 Empezamos por revisar los datos disponible, tomando de la descripción del concurso vemos en la siguiente tabla la descripción de cada medida
 
 | Registro                          | Descripción                                            |
-|----------------------------|--------------------------------------------|
+|-----------------------------------|--------------------------------------------------------|
 | well                              | Nombre del pozo                                        |
 | FORCE_2020_LITHOFACIES_LITHOLOGY  | tipos de roca interpretados                            |
 | FORCE_2020_LITHOFACIES_CONFIDENCE | Medida de calidad de la interpretación de tipo de roca |
