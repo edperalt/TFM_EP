@@ -46,48 +46,51 @@ write_rds(xcore_test, "../data/modelos/00_xcore_test.rds")
 ```
 
 ```{r}
-h2o.init()
-h2o.shutdown()
-h2o.init(nthreads=8)
+# h2o.init()
+# h2o.shutdown()
+# h2o.init(nthreads=8)
 
 
 ```
 
 ```{r}
 
-train <- as.h2o(xcore_train)
+# train <- as.h2o(xcore_train)
+# 
+# start_time <- Sys.time()  
+# 
+# 
+# aml <- h2o.automl(x = 2:40,y=1,training_frame = train,
+#                   max_models = 20,
+#                   seed = 1,
+#                   keep_cross_validation_predictions=TRUE)
+# 
+# lb <- aml@leaderboard
+# print(lb, n = nrow(lb))  # Print all rows instead of default (6 rows)
+# 
+# aml@leader
+# 
+# 
+# end_time <- Sys.time()
+# 
+# end_time - start_time
+# 
+# 
+# h2o.shutdown()
 
-start_time <- Sys.time()  
+```
 
+```{r}
 
-aml <- h2o.automl(x = 2:40,y=1,training_frame = train,
-                  max_models = 20,
-                  seed = 1,
-                  keep_cross_validation_predictions=TRUE)
-
-lb <- aml@leaderboard
-print(lb, n = nrow(lb))  # Print all rows instead of default (6 rows)
-
-aml@leader
-
-
-end_time <- Sys.time()
-
-end_time - start_time
-
-
-h2o.shutdown()
+# write_rds(aml, "../data/modelos/01_aml_h2o_all_mod.rds")
 
 ```
 
 ```{r}
 
-write_rds(aml, "../data/modelos/01_aml_h2o_all_mod.rds")
+aml_all <- read_rds("../data/modelos/01_aml_h2o_all_mod.rds")
 
-```
-
-```{r}
-aml@leaderboard %>% as_tibble() %>% flextable() %>% 
+aml_all@leaderboard %>% as_tibble() %>% flextable() %>% 
   autofit() %>% 
   theme_alafoli()
 ```

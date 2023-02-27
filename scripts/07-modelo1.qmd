@@ -636,17 +636,25 @@ Mantenemos los valores estimados y construimos una malla que cubre todas las com
 
 
 
-set.seed(123)
-
-step_fold <- vfold_cv(los_datos, v=5, repeats = 5, strata = lith_name)
-
-random_forest_pca <-
-  rf_workflow %>%
-  tune_grid(resamples = step_fold, grid = wflow_param %>% grid_regular(levels = 9), metrics = las_metricas )
-
-write_rds(random_forest_pca, "../data/modelos/05_tuned_rf_pca.rds")
-# random_forest_pca<-  read_rds("../data/modelos/05_tuned_rf_pca.rds")
+# set.seed(123)
+# 
+# step_fold <- vfold_cv(los_datos, v=5, repeats = 5, strata = lith_name)
+# 
+# random_forest_pca <-
+#   rf_workflow %>%
+#   tune_grid(resamples = step_fold, grid = wflow_param %>% grid_regular(levels = 9), metrics = las_metricas )
+# 
+# write_rds(random_forest_pca, "../data/modelos/05_tuned_rf_pca.rds")
+random_forest_pca<-  read_rds("../data/modelos/05_tuned_rf_pca.rds")
 ```
+
+```{r}
+
+show_best(random_forest_pca, metric = "roc_auc")
+
+```
+
+el mejor caso tiene 16 componentes.
 
 ```{r}
 #| message: false
@@ -660,7 +668,7 @@ random_forest_pca %>%
   ggplot(aes(mtry, mean, color = min_n)) +
   geom_line(alpha = 0.5, size = 1.5) +
   geom_point() +
-  labs(y = "accuracy",
+  labs(y = "roc_auc",
        title="Random forest hyper parameter tuning ",
        subtitle = "Accuracy"
        
